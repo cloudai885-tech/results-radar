@@ -55,7 +55,7 @@ function position(c) {
   const per = data.perStockRs;
   if (!per || !c.lastClose) return '';
   const shares = Math.floor(per / c.lastClose);
-  return `<p class="note">About ${shares} shares, ${esc(money(shares * c.lastClose))}. A third of your money per stock, keep the rest in cash.</p>`;
+  return `<p class="note">About ${shares} shares, ${esc(money(shares * c.lastClose))}. Keep the rest of your money in cash.</p>`;
 }
 
 function planHtml(c) {

@@ -89,12 +89,14 @@ let backtest = null;
 try { backtest = JSON.parse(fs.readFileSync(new URL('./data/backtest.json', import.meta.url))); } catch { /* backtest not run yet */ }
 const bucketFor = (score) => backtest?.buckets.find((b) => (b.lo == null || score >= b.lo) && (b.hi == null || score < b.hi));
 const minScore = backtest?.cuts?.[3] ?? Infinity;
-// Up to 3 picks, a third of the money each. Only Excellent or better; any unused third stays in cash.
-const BUDGET_RS = 20000;
-const PER_STOCK_RS = Math.floor(BUDGET_RS / 3);
-const picks = ranked.filter((r) => !r.late && r.score >= minScore && r.facts.close <= PER_STOCK_RS)
+// At most 2 picks at a fixed size. Only Excellent or better with real delivery buying; the rest stays in cash.
+const PER_STOCK_RS = 10000;
+const MAX_PICKS = 2;
+const MIN_DELIVERY_PCT = 45;
+const hasRealBuyers = (r) => { const c = crowdSignals(r.symbol); return !c || c.pct3 >= MIN_DELIVERY_PCT; };
+const picks = ranked.filter((r) => !r.late && r.score >= minScore && r.facts.close <= PER_STOCK_RS && hasRealBuyers(r))
   .sort((a, b) => (b.chances?.qoq ?? 0) - (a.chances?.qoq ?? 0)) // short trades: best chance of beating last quarter first
-  .slice(0, 3);
+  .slice(0, MAX_PICKS);
 const pick = picks[0] ?? null;
 
 const pct = (v) => (v == null ? 'n/a' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`);
