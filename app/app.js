@@ -46,8 +46,8 @@ function record(label) {
 function chances(c) {
   if (c.chanceYoY == null) return '';
   return `<div class="chances">
-    <div class="step"><span>Chance better than last year</span><b>${whole(c.chanceYoY)}</b></div>
     <div class="step"><span>Chance better than last quarter</span><b>${whole(c.chanceQoQ)}</b></div>
+    <div class="step"><span>Chance better than last year</span><b>${whole(c.chanceYoY)}</b></div>
   </div>`;
 }
 
@@ -68,7 +68,7 @@ function companyHtml(c) {
   return `<details class="card ${CLASS[c.label]}">
     <summary>
       ${ring(shownScore(c))}
-      <div class="name"><b>${esc(cleanName(c.company))}</b><span>${esc(c.quarter)} result${c.chanceYoY != null ? ` · ${whole(c.chanceYoY)} chance better` : ''}</span></div>
+      <div class="name"><b>${esc(cleanName(c.company))}</b><span>${esc(c.quarter)} result${c.chanceQoQ != null ? ` · ${whole(c.chanceQoQ)} to beat last qtr` : ''}</span></div>
       <span class="badge">${esc(c.label)}</span>
       ${CHEVRON}
     </summary>

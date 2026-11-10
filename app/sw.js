@@ -1,5 +1,5 @@
 // Network first so ratings are always fresh; the cached copy is only for when you are offline.
-const CACHE = 'results-radar-v3';
+const CACHE = 'results-radar-v4';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

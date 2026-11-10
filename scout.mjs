@@ -92,7 +92,9 @@ const minScore = backtest?.cuts?.[3] ?? Infinity;
 // Up to 3 picks, a third of the money each. Only Excellent or better; any unused third stays in cash.
 const BUDGET_RS = 20000;
 const PER_STOCK_RS = Math.floor(BUDGET_RS / 3);
-const picks = ranked.filter((r) => !r.late && r.score >= minScore && r.facts.close <= PER_STOCK_RS).slice(0, 3);
+const picks = ranked.filter((r) => !r.late && r.score >= minScore && r.facts.close <= PER_STOCK_RS)
+  .sort((a, b) => (b.chances?.qoq ?? 0) - (a.chances?.qoq ?? 0)) // short trades: best chance of beating last quarter first
+  .slice(0, 3);
 const pick = picks[0] ?? null;
 
 const pct = (v) => (v == null ? 'n/a' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`);
