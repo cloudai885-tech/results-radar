@@ -130,7 +130,7 @@ const appRows = scored.map((r) => {
   const c = universe.get(ev.symbol);
   const label = r.error ? 'No data' : opinion(r);
   return {
-    symbol: ev.symbol, company: c.company, industry: c.industry, date: ev.date, quarter: FY_QUARTER[targetQuarter(ev.date) % 4], label, score: r.score ?? null, summary: r.error ? 'Could not get data for this company today.' : summaryFor(r),
+    symbol: ev.symbol, company: c.company, industry: c.industry, date: ev.date, quarter: FY_QUARTER[targetQuarter(ev.date) % 4], label, score: r.score ?? null, filtered: !!r.rejected, summary: r.error ? 'Could not get data for this company today.' : summaryFor(r),
     reasons: r.error ? ['Could not get data for this company today.'] : reasonsFor(r),
     buyOn: r.buyOn ?? null, sellOn: r.sellOn ?? null, tooLate: !!r.tooLate, late: !!r.late, lastClose: r.facts?.close ?? null,
   };
