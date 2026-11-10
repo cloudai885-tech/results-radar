@@ -65,6 +65,10 @@ footer { max-width: 1080px; margin: 0 auto; padding: 8px 16px calc(32px + env(sa
 .step span { display: block; color: var(--muted); font-size: 11px; }
 .step b { font-size: 14px; white-space: nowrap; }
 .hero .step { background: color-mix(in srgb, var(--surface-2) 75%, transparent); }
+.chances { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin: 8px 0; }
+.chances .step span { white-space: normal; line-height: 1.25; }
+.chances .step b { font-size: 18px; }
+#side .hero + .hero { margin-top: 12px; }
 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 8px; }
 .stat { text-align: center; padding: 6px 2px; }
 .stat b { display: block; font-size: 16px; }

@@ -43,6 +43,21 @@ function record(label) {
   </div><p class="stats-note">Past record of this rating, ${h.trades.toLocaleString('en-IN')} trades</p>`;
 }
 
+function chances(c) {
+  if (c.chanceYoY == null) return '';
+  return `<div class="chances">
+    <div class="step"><span>Chance better than last year</span><b>${whole(c.chanceYoY)}</b></div>
+    <div class="step"><span>Chance better than last quarter</span><b>${whole(c.chanceQoQ)}</b></div>
+  </div>`;
+}
+
+function position(c) {
+  const per = data.perStockRs;
+  if (!per || !c.lastClose) return '';
+  const shares = Math.floor(per / c.lastClose);
+  return `<p class="note">About ${shares} shares, ${esc(money(shares * c.lastClose))}. A third of your money per stock, keep the rest in cash.</p>`;
+}
+
 function planHtml(c) {
   if (c.label === 'Bad' || c.label === 'No data') return '<div class="notice">Skip this one.</div>';
   if (c.tooLate) return '<div class="notice">Too late to buy on the plan, results are too close.</div>';
@@ -53,12 +68,13 @@ function companyHtml(c) {
   return `<details class="card ${CLASS[c.label]}">
     <summary>
       ${ring(shownScore(c))}
-      <div class="name"><b>${esc(cleanName(c.company))}</b><span>${esc(c.quarter)} result${c.industry ? ` · ${esc(c.industry)}` : ''}</span></div>
+      <div class="name"><b>${esc(cleanName(c.company))}</b><span>${esc(c.quarter)} result${c.chanceYoY != null ? ` · ${whole(c.chanceYoY)} chance better` : ''}</span></div>
       <span class="badge">${esc(c.label)}</span>
       ${CHEVRON}
     </summary>
     <div class="detail">
       <p>${esc(c.summary)}</p>
+      ${chances(c)}
       <ul>${c.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
       ${planHtml(c)}
       ${record(c.label)}
@@ -82,17 +98,22 @@ function legendHtml() {
 
 function renderSide() {
   const el = document.getElementById('side');
-  const c = data.days.flatMap((d) => d.companies).find((x) => x.symbol === data.pick && x.date === data.pickDate);
-  const hero = c ? `<div class="hero ${CLASS[c.label]}">
-      <small>This week's pick</small>
+  const all = data.days.flatMap((d) => d.companies);
+  const chosen = (data.picks ?? (data.pick ? [{ symbol: data.pick, date: data.pickDate }] : []))
+    .map((p) => all.find((x) => x.symbol === p.symbol && x.date === p.date)).filter(Boolean);
+  const heroes = chosen.map((c, i) => `<div class="hero ${CLASS[c.label]}">
+      <small>${chosen.length > 1 ? `Pick ${i + 1} of ${chosen.length}` : "This week's pick"}</small>
       <div class="hero-head">
         <div><h2>${esc(cleanName(c.company))}</h2><span class="badge">${esc(c.label)}</span></div>
         ${ring(c.score, true)}
       </div>
       <p>${esc(c.summary)}</p>
+      ${chances(c)}
       ${steps(c)}
+      ${position(c)}
       ${record(c.label)}
-    </div>` : `<div class="hero r-none"><small>This week's pick</small><h2>No trade</h2><p>Nothing is strong enough with time left to buy.</p></div>`;
+    </div>`).join('');
+  const hero = heroes || `<div class="hero r-none"><small>This week's pick</small><h2>No trade</h2><p>Nothing is strong enough with time left to buy. Keep your money in cash.</p></div>`;
   el.innerHTML = hero + legendHtml();
 }
 

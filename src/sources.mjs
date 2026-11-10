@@ -152,16 +152,38 @@ export function parseScreener(html) {
   const sales = pick(/^(sales|revenue)/i);
   const pat = pick(/^net profit/i);
   const opm = pick(/^(opm|financing margin)/i);
+  const otherIncome = pick(/^other income/i);
+  const pbt = pick(/^profit before tax/i);
+  const eps = pick(/^eps/i);
   const quarters = new Map();
   headers.forEach((h, i) => {
     const ord = quarterOrdinal(h);
-    if (ord != null) quarters.set(ord, { label: h, sales: sales[i] ?? null, pat: pat[i] ?? null, opm: opm[i] ?? null });
+    if (ord != null) quarters.set(ord, { label: h, sales: sales[i] ?? null, pat: pat[i] ?? null, opm: opm[i] ?? null, otherIncome: otherIncome[i] ?? null, pbt: pbt[i] ?? null, eps: eps[i] ?? null });
   });
+
+  // Who owns the stock, quarter by quarter. Only the first table is quarterly.
+  const holdings = new Map();
+  const holdStart = html.indexOf('id="shareholding"');
+  if (holdStart >= 0) {
+    const table = html.slice(holdStart, html.indexOf('</table>', holdStart));
+    const holdHeaders = [...table.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((m) => strip(m[1])).slice(1);
+    const holdRows = {};
+    for (const m of table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/g)) {
+      const cells = [...m[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => strip(c[1]));
+      if (cells.length > 1) holdRows[cells[0].replace(/\s*\+\s*$/, '').trim()] = cells.slice(1).map(num);
+    }
+    holdHeaders.forEach((h, i) => {
+      const ord = quarterOrdinal(h);
+      if (ord != null) holdings.set(ord, { promoter: holdRows.Promoters?.[i] ?? null, fii: holdRows.FIIs?.[i] ?? null, dii: holdRows.DIIs?.[i] ?? null, holders: holdRows['No. of Shareholders']?.[i] ?? null });
+    });
+  }
+  const level = (title) => new RegExp(`title="${title}"[^>]*>([^<]+)<`).exec(html)?.[1]?.replace(/&amp;/g, '&').trim() ?? null;
+  const classification = { sector: level('Sector'), broadIndustry: level('Broad Industry'), industry: level('Industry') };
   const ratio = (name) => {
     const m = html.match(new RegExp(`${name}[\\s\\S]{0,250}?<span class="number">([\\d,.]+)</span>`));
     return m ? num(m[1]) : null;
   };
-  return { quarters, marketCapCr: ratio('Market Cap'), pe: ratio('Stock P/E') };
+  return { quarters, holdings, classification, marketCapCr: ratio('Market Cap'), pe: ratio('Stock P/E') };
 }
 
 const QIDX = { Mar: 0, Jun: 1, Sep: 2, Dec: 3 };

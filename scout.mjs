@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { nifty500, eventCalendar, pastResultDates, dailyBars, fundamentals, holidays, mapPool, ordinalLabel } from './src/sources.mjs';
 import { scoreEvent, reactionFor, targetQuarter, RULES } from './src/score.mjs';
 import { ipoReport } from './src/ipo.mjs';
+import { modelFeatures, predict, demandSignals } from './src/model.mjs';
 
 const nowIst = new Date(Date.now() + 19800e3);
 const today = nowIst.toISOString().slice(0, 10);
@@ -26,6 +27,19 @@ const windowStart = addDays(today, 3);
 const horizon = addDays(today, 9);
 const calendar = (await eventCalendar()).filter((e) => universe.has(e.symbol) && e.date >= windowStart && e.date <= horizon);
 const nifty = await dailyBars('^NSEI');
+
+let model = null;
+try { model = JSON.parse(fs.readFileSync(new URL('./data/model.json', import.meta.url))); } catch { console.warn('Result-chance model not found.'); }
+
+// How each reporting industry moved against the Nifty over about 3 months (60 sessions).
+const threeMonths = (b) => (b?.length > 60 ? b.at(-1).close / b.at(-61).close - 1 : null);
+const industriesNeeded = new Set(calendar.map((e) => universe.get(e.symbol).industry));
+const members = [...universe.values()].filter((c) => industriesNeeded.has(c.industry));
+const memberMoves = await mapPool(members, 4, async (c) => ({ industry: c.industry, move: threeMonths(await dailyBars(`${c.symbol}.NS`)) }));
+const industryMove = new Map([...industriesNeeded].map((name) => {
+  const moves = memberMoves.filter((m) => m.industry === name && m.move != null).map((m) => m.move);
+  return [name, moves.length >= 3 ? moves.reduce((s, x) => s + x, 0) / moves.length - threeMonths(nifty) : null];
+}));
 console.log(`${calendar.length} Nifty 500 companies report results between ${windowStart} and ${horizon}. Researching each...`);
 
 const dd = (iso) => iso.split('-').reverse().join('-');
@@ -47,7 +61,12 @@ const scored = await mapPool(calendar, 4, async (ev) => {
   const completed = bars.filter((b) => b.date < today || (b.date === today && marketClosed));
   const reactions = dates.filter((d) => d < today).map((d) => reactionFor(completed, nifty, d)).filter(Boolean);
   const s = scoreEvent({ dateIso: ev.date, quarters: f.quarters, bars: completed, nifty, pastReactions: reactions });
-  return { ...ev, ...s, buyOn, late, tooLate, sellOn: nextSessionAfter(ev.date), company: universe.get(ev.symbol).company, industry: universe.get(ev.symbol).industry, marketCapCr: f.marketCapCr, pe: f.pe };
+  let chances = null;
+  if (model && s.score != null) {
+    const X = modelFeatures({ dateIso: ev.date, quarters: f.quarters, bars: completed, nifty, pastReactions: reactions });
+    chances = { yoy: predict(model.yoy, X), qoq: predict(model.qoq, X) };
+  }
+  return { ...ev, ...s, chances, signals: demandSignals(completed, f.holdings), buyOn, late, tooLate, sellOn: nextSessionAfter(ev.date), company: universe.get(ev.symbol).company, industry: universe.get(ev.symbol).industry, marketCapCr: f.marketCapCr, pe: f.pe };
 }, (done, total) => { if (done % 20 === 0) console.log(`  ${done}/${total}`); });
 
 const failed = scored.filter((r) => r.error);
@@ -58,8 +77,11 @@ let backtest = null;
 try { backtest = JSON.parse(fs.readFileSync(new URL('./data/backtest.json', import.meta.url))); } catch { /* backtest not run yet */ }
 const bucketFor = (score) => backtest?.buckets.find((b) => (b.lo == null || score >= b.lo) && (b.hi == null || score < b.hi));
 const minScore = backtest?.cuts?.[3] ?? Infinity;
-const BUDGET_RS = 20000; // a pick must be buyable with this amount
-const pick = ranked.find((r) => !r.late && r.score >= minScore && r.facts.close <= BUDGET_RS) ?? null;
+// Up to 3 picks, a third of the money each. Only Excellent or better; any unused third stays in cash.
+const BUDGET_RS = 20000;
+const PER_STOCK_RS = Math.floor(BUDGET_RS / 3);
+const picks = ranked.filter((r) => !r.late && r.score >= minScore && r.facts.close <= PER_STOCK_RS).slice(0, 3);
+const pick = picks[0] ?? null;
 
 const pct = (v) => (v == null ? 'n/a' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`);
 const history = (b) => (b ? `${(b.win * 100).toFixed(0)}% wins, avg ${pct(b.avg)} (${b.n} past trades, ${b.name})` : 'run the backtest first');
@@ -122,6 +144,11 @@ function reasonsFor(r) {
   if (f.marginDelta != null) out.push(`Margin ${f.marginDelta >= 0 ? 'up' : 'down'} ${Math.abs(f.marginDelta).toFixed(1)} points vs last year.`);
   if (f.reactionsSeen) out.push(`Beat Nifty after ${f.reactionWins} of its last ${f.reactionsSeen} results.`);
   out.push(`Stock moved ${pct(f.run10)} in the last 10 sessions.`);
+  const sector = industryMove.get(r.industry);
+  if (sector != null) out.push(`${r.industry} stocks are ${pct(sector)} against the Nifty over 3 months.`);
+  if (r.signals?.volumeRatio != null) out.push(`Trading volume this week is ${r.signals.volumeRatio.toFixed(1)}x its normal level.`);
+  if (r.signals?.fiiChange != null) out.push(`Last quarter FII holding changed ${r.signals.fiiChange >= 0 ? '+' : ''}${r.signals.fiiChange.toFixed(2)} points${r.signals.diiChange != null ? ` and DII ${r.signals.diiChange >= 0 ? '+' : ''}${r.signals.diiChange.toFixed(2)} points` : ''}.`);
+  if (r.pe != null) out.push(`P/E is about ${Math.round(r.pe)}.`);
   return out;
 }
 const appRows = scored.map((r) => {
@@ -130,7 +157,7 @@ const appRows = scored.map((r) => {
   const c = universe.get(ev.symbol);
   const label = r.error ? 'No data' : opinion(r);
   return {
-    symbol: ev.symbol, company: c.company, industry: c.industry, date: ev.date, quarter: FY_QUARTER[targetQuarter(ev.date) % 4], label, score: r.score ?? null, filtered: !!r.rejected, summary: r.error ? 'Could not get data for this company today.' : summaryFor(r),
+    symbol: ev.symbol, company: c.company, industry: c.industry, date: ev.date, quarter: FY_QUARTER[targetQuarter(ev.date) % 4], label, score: r.score ?? null, filtered: !!r.rejected, chanceYoY: r.chances?.yoy ?? null, chanceQoQ: r.chances?.qoq ?? null, summary: r.error ? 'Could not get data for this company today.' : summaryFor(r),
     reasons: r.error ? ['Could not get data for this company today.'] : reasonsFor(r),
     buyOn: r.buyOn ?? null, sellOn: r.sellOn ?? null, tooLate: !!r.tooLate, late: !!r.late, lastClose: r.facts?.close ?? null,
   };
@@ -142,7 +169,7 @@ let ipo = null;
 try { ipo = await ipoReport(today); } catch (e) { console.warn('IPO data unavailable:', e.message); }
 
 const payload = {
-  ipo, generated: new Date().toISOString(), stopLossPct: RULES.stopLoss * 100, pick: pick?.symbol ?? null, pickDate: pick?.date ?? null,
+  ipo, generated: new Date().toISOString(), stopLossPct: RULES.stopLoss * 100, pick: pick?.symbol ?? null, pickDate: pick?.date ?? null, perStockRs: PER_STOCK_RS, picks: picks.map((p) => ({ symbol: p.symbol, date: p.date })),
   history: Object.fromEntries(Object.keys(BUCKETS_FOR).map((l) => [l, labelHistory(l)])), days,
 };
 // If most companies failed (for example a site blocked us), keep yesterday's ratings instead of replacing them with blanks.
