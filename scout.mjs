@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import { nifty500, eventCalendar, pastResultDates, dailyBars, fundamentals, holidays, mapPool, ordinalLabel } from './src/sources.mjs';
 import { scoreEvent, reactionFor, targetQuarter, RULES } from './src/score.mjs';
+import { ipoReport } from './src/ipo.mjs';
 
 const nowIst = new Date(Date.now() + 19800e3);
 const today = nowIst.toISOString().slice(0, 10);
@@ -57,7 +58,8 @@ let backtest = null;
 try { backtest = JSON.parse(fs.readFileSync(new URL('./data/backtest.json', import.meta.url))); } catch { /* backtest not run yet */ }
 const bucketFor = (score) => backtest?.buckets.find((b) => (b.lo == null || score >= b.lo) && (b.hi == null || score < b.hi));
 const minScore = backtest?.cuts?.[3] ?? Infinity;
-const pick = ranked.find((r) => !r.late && r.score >= minScore) ?? null;
+const BUDGET_RS = 20000; // a pick must be buyable with this amount
+const pick = ranked.find((r) => !r.late && r.score >= minScore && r.facts.close <= BUDGET_RS) ?? null;
 
 const pct = (v) => (v == null ? 'n/a' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`);
 const history = (b) => (b ? `${(b.win * 100).toFixed(0)}% wins, avg ${pct(b.avg)} (${b.n} past trades, ${b.name})` : 'run the backtest first');
@@ -135,8 +137,12 @@ const appRows = scored.map((r) => {
 }).filter(Boolean).sort((a, b) => LABELS.indexOf(a.label) - LABELS.indexOf(b.label) || (b.score ?? 0) - (a.score ?? 0));
 
 const days = [...new Set(appRows.map((r) => r.date))].sort().map((date) => ({ date, companies: appRows.filter((r) => r.date === date) }));
+// IPOs come from a separate site, so a problem there must not stop the company ratings.
+let ipo = null;
+try { ipo = await ipoReport(today); } catch (e) { console.warn('IPO data unavailable:', e.message); }
+
 const payload = {
-  generated: new Date().toISOString(), stopLossPct: RULES.stopLoss * 100, pick: pick?.symbol ?? null, pickDate: pick?.date ?? null,
+  ipo, generated: new Date().toISOString(), stopLossPct: RULES.stopLoss * 100, pick: pick?.symbol ?? null, pickDate: pick?.date ?? null,
   history: Object.fromEntries(Object.keys(BUCKETS_FOR).map((l) => [l, labelHistory(l)])), days,
 };
 // If most companies failed (for example a site blocked us), keep yesterday's ratings instead of replacing them with blanks.

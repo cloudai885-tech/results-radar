@@ -55,6 +55,7 @@ function renderPick() {
       <li>Stop-loss ${data.stopLossPct}% below your buy price</li>
       <li>Sell by close on ${esc(dayName(c.sellOn))}</li>
     </ul>
+    <p style="font-size:13px;opacity:.8;margin:8px 0 0">${esc(historyLine(c.label))}</p>
   </div>`;
 }
 
@@ -74,6 +75,46 @@ function renderDays() {
   }).join('');
   document.getElementById('days').innerHTML = html || '<p class="empty">No companies to show.</p>';
 }
+
+const IPO_CLASS = { Strong: 'excellent', Okay: 'good', Avoid: 'bad', 'No GMP yet': 'none' };
+
+function ipoStatus(i) {
+  if (i.status === 'upcoming') return `Opens ${i.open ? dayName(i.open) : 'soon'}`;
+  if (i.status === 'open') return `Open now, closes ${dayName(i.close)}`;
+  return i.listing ? `Bidding closed, lists ${dayName(i.listing)}` : 'Bidding closed';
+}
+
+function ipoHtml(i) {
+  const gmp = i.gmp ? `GMP ₹${i.gmp} (${pct(i.gmpPct)})` : 'GMP not available';
+  const minimum = i.price && i.lot ? ` Minimum about ₹${Math.round(i.price * i.lot * (i.board === 'SME' ? 2 : 1)).toLocaleString('en-IN')}.` : '';
+  return `<details class="company">
+    <summary>
+      <div class="name"><b>${esc(i.name)}</b><span class="muted">${esc(i.board)} · ${esc(gmp)}<br>${esc(ipoStatus(i))}</span></div>
+      <div class="right">${i.score != null ? `<span class="score">${i.score}</span>` : ''}<span class="badge ${IPO_CLASS[i.label]}">${esc(i.label)}</span></div>
+    </summary>
+    <div class="detail">
+      <p><b>Why:</b> ${esc(i.why)}</p>
+      <div class="plan">Price ₹${esc(i.price ?? '--')}, lot ${esc(i.lot ?? '--')}, size ₹${esc(i.sizeCr ?? '--')} Cr.${esc(minimum)}<br>Bids so far: ${i.subscription != null ? esc(i.subscription) + 'x' : 'not started'}</div>
+    </div>
+  </details>`;
+}
+
+function renderIpos() {
+  const el = document.getElementById('view-ipo');
+  if (!data.ipo) { el.innerHTML = '<p class="empty">IPO data is not available right now.</p>'; return; }
+  const rec = Object.entries(data.ipo.record).map(([label, r]) => `${label}: ${r.positive} of ${r.count} listed up, average ${pct(r.avgGain)}`).join('. ');
+  el.innerHTML = `${data.ipo.items.map(ipoHtml).join('') ? `<div style="margin-top:14px">${data.ipo.items.map(ipoHtml).join('')}</div>` : '<p class="empty">No upcoming IPOs right now.</p>'}
+    <p class="ipo-note">GMP is an unofficial price and can change fast. Score is out of 100.${rec ? ` Recent listings by score. ${esc(rec)}.` : ''}</p>`;
+}
+
+function showTab(name) {
+  document.getElementById('view-results').hidden = name !== 'results';
+  document.getElementById('view-ipo').hidden = name !== 'ipo';
+  document.getElementById('tab-results').setAttribute('aria-selected', String(name === 'results'));
+  document.getElementById('tab-ipo').setAttribute('aria-selected', String(name === 'ipo'));
+}
+document.getElementById('tab-results').addEventListener('click', () => showTab('results'));
+document.getElementById('tab-ipo').addEventListener('click', () => showTab('ipo'));
 
 // Reads from Supabase once config.js is filled in, otherwise from the local data.json.
 async function fetchData() {
@@ -104,6 +145,7 @@ async function load() {
   renderPick();
   renderFilters();
   renderDays();
+  renderIpos();
 }
 
 load();

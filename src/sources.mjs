@@ -14,10 +14,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // One request at a time per host, with a minimum gap between them.
 const gates = new Map();
-const GAP_MS = { 'www.nseindia.com': 450, 'query1.finance.yahoo.com': 250, 'www.screener.in': 1600 };
+const GAP_MS = { 'www.nseindia.com': 450, 'query1.finance.yahoo.com': 250, 'www.screener.in': 3000 };
+// When a site says "slow down", every request to that site waits, not just the one that was refused.
+const pausedUntil = new Map();
 function gated(host, fn) {
   const prev = gates.get(host) ?? Promise.resolve();
   const run = prev.catch(() => {}).then(async () => {
+    const wait = (pausedUntil.get(host) ?? 0) - Date.now();
+    if (wait > 0) await sleep(wait);
     try { return await fn(); } finally { await sleep(GAP_MS[host] ?? 300); }
   });
   gates.set(host, run);
@@ -35,11 +39,11 @@ async function fetchCached(url, { ttlHours, headers = {}, onStatus } = {}) {
   }
   const host = new URL(url).host;
   let lastError;
-  for (let attempt = 1; attempt <= 4; attempt++) {
+  for (let attempt = 1; attempt <= 6; attempt++) {
     const res = await gated(host, async () => {
       try {
         const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', ...headers }, signal: AbortSignal.timeout(30000) });
-        return { status: r.status, body: await r.text() };
+        return { status: r.status, body: await r.text(), retryAfter: Number(r.headers.get('retry-after')) || 0 };
       } catch (e) {
         return { status: 0, body: String(e) };
       }
@@ -50,8 +54,10 @@ async function fetchCached(url, { ttlHours, headers = {}, onStatus } = {}) {
     }
     if (res.status === 404) return null;
     lastError = `HTTP ${res.status} for ${url}`;
+    console.warn(`  ${host} answered ${res.status}${res.retryAfter ? `, retry after ${res.retryAfter}s` : ''} (attempt ${attempt})`);
     if (onStatus) await onStatus(res.status);
-    await sleep(res.status === 429 ? 20000 * attempt : 1500 * attempt);
+    if (res.status === 429) pausedUntil.set(host, Date.now() + (res.retryAfter || 60) * 1000);
+    else await sleep(1500 * attempt);
   }
   throw new Error(lastError);
 }
@@ -75,7 +81,7 @@ async function nseJson(apiPath, ttlHours) {
   if (!nseCookie && !fresh) await nseRefreshCookie();
   // Headers are read per attempt through the getter so a refreshed cookie is used on retry.
   const headers = { Accept: 'application/json', Referer: 'https://www.nseindia.com/companies-listing/corporate-filings-event-calendar', get Cookie() { return nseCookie ?? ''; } };
-  const body = await fetchCached(url, { ttlHours, headers, onStatus: (s) => (s === 401 || s === 403 ? nseRefreshCookie() : undefined) });
+  const body = await fetchCached(url, { ttlHours, headers, onStatus: (s) => (s === 0 || s === 401 || s === 403 ? nseRefreshCookie().catch(() => {}) : undefined) });
   return body ? JSON.parse(body) : null;
 }
 
@@ -124,6 +130,9 @@ export async function dailyBars(yahooSymbol, range = '5y', ttlHours = 6) {
   });
   return bars;
 }
+
+// ---- IPOs ---------------------------------------------------------------
+export const ipoPage = () => fetchCached('https://www.investorgain.com/report/live-ipo-gmp/331/', { ttlHours: 3 });
 
 // ---- Screener -----------------------------------------------------------
 const num = (s) => { const v = parseFloat(String(s).replace(/,|%|&nbsp;/g, '').trim()); return Number.isFinite(v) ? v : null; };

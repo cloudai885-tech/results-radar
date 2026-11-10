@@ -16,9 +16,16 @@
     <p id="updated" class="muted">Loading...</p>
   </header>
   <main>
-    <section id="pick"></section>
-    <nav id="filters" class="filters" aria-label="Filter by opinion"></nav>
-    <div id="days"></div>
+    <div class="tabs" role="tablist">
+      <button type="button" id="tab-results" role="tab" aria-selected="true">Results</button>
+      <button type="button" id="tab-ipo" role="tab" aria-selected="false">IPOs</button>
+    </div>
+    <div id="view-results">
+      <section id="pick"></section>
+      <nav id="filters" class="filters" aria-label="Filter by opinion"></nav>
+      <div id="days"></div>
+    </div>
+    <div id="view-ipo" hidden></div>
   </main>
   <footer class="muted">Opinions come from past numbers and past price moves. They are not a guarantee, so always use your stop-loss.</footer>
   <script src="config.js"></script>

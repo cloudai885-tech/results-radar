@@ -20,6 +20,14 @@ h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
 .muted { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
 footer.muted { margin: 0 auto; padding-top: 12px; padding-bottom: 32px; }
 
+.tabs { display: flex; gap: 4px; margin-top: 16px; padding: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.tabs button { flex: 1; border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; padding: 8px; border-radius: 8px; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-text); }
+[hidden] { display: none !important; }
+.ipo-note { font-size: 13px; color: var(--muted); margin: 14px 0; }
+.score { font-size: 13px; font-weight: 700; margin-right: 6px; }
+.right { flex: none; display: flex; align-items: center; }
+
 .pick { background: var(--accent); color: var(--accent-text); border-radius: 16px; padding: 16px; margin-top: 16px; }
 .pick small { opacity: 0.7; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
 .pick h2 { margin: 2px 0 8px; font-size: 20px; }
