@@ -1,0 +1,19 @@
+name: Daily ratings
+on:
+  schedule:
+    - cron: '30 12 * * *' # 6:00 pm India time, after the market closes
+  workflow_dispatch:
+
+jobs:
+  rate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scout.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

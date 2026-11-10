@@ -1,0 +1,7 @@
+.env
+node_modules/
+data/cache/
+data/backtest.log
+data/backtest-events.json
+app/data.json
+reports/
