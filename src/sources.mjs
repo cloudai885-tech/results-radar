@@ -131,6 +131,22 @@ export async function dailyBars(yahooSymbol, range = '5y', ttlHours = 6) {
   return bars;
 }
 
+// One day's NSE delivery file: how many shares were really taken home, per stock.
+export async function deliveryDay(iso) {
+  const [y, m, d] = iso.split('-');
+  const csv = await fetchCached(`https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_${d}${m}${y}.csv`, { ttlHours: 1e7 });
+  if (!csv) return null;
+  const lines = csv.trim().split(/\r?\n/);
+  const head = lines[0].split(',').map((x) => x.trim());
+  const col = (name) => head.indexOf(name);
+  const day = new Map();
+  for (const line of lines.slice(1)) {
+    const p = line.split(',').map((x) => x.trim());
+    if (p[col('SERIES')] === 'EQ') day.set(p[col('SYMBOL')], { trades: Number(p[col('NO_OF_TRADES')]), delivered: Number(p[col('DELIV_QTY')]), deliveryPct: Number(p[col('DELIV_PER')]) });
+  }
+  return day;
+}
+
 // ---- IPOs ---------------------------------------------------------------
 export const ipoPage = () => fetchCached('https://www.investorgain.com/report/live-ipo-gmp/331/', { ttlHours: 3 });
 

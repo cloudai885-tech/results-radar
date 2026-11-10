@@ -1,6 +1,6 @@
 // Weekly scan: finds upcoming results in the Nifty 500, scores them, and names one pick (or none).
 import fs from 'node:fs';
-import { nifty500, eventCalendar, pastResultDates, dailyBars, fundamentals, holidays, mapPool, ordinalLabel } from './src/sources.mjs';
+import { nifty500, eventCalendar, pastResultDates, dailyBars, fundamentals, holidays, mapPool, ordinalLabel, deliveryDay } from './src/sources.mjs';
 import { scoreEvent, reactionFor, targetQuarter, RULES } from './src/score.mjs';
 import { ipoReport } from './src/ipo.mjs';
 import { modelFeatures, predict, demandSignals } from './src/model.mjs';
@@ -30,6 +30,18 @@ const nifty = await dailyBars('^NSEI');
 
 let model = null;
 try { model = JSON.parse(fs.readFileSync(new URL('./data/model.json', import.meta.url))); } catch { console.warn('Result-chance model not found.'); }
+
+// Who is really buying: delivery and trade counts over the last 60 sessions.
+const deliveryDays = (await mapPool(nifty.slice(-60).map((b) => b.date), 3, deliveryDay)).filter((d) => d instanceof Map);
+function crowdSignals(symbol) {
+  if (deliveryDays.length < 40) return null;
+  const mean = (days, key) => { const v = days.map((d) => d.get(symbol)?.[key]).filter(Number.isFinite); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+  const pct3 = mean(deliveryDays.slice(-3), 'deliveryPct'), pct60 = mean(deliveryDays, 'deliveryPct');
+  const shares5 = mean(deliveryDays.slice(-5), 'delivered'), shares60 = mean(deliveryDays, 'delivered');
+  const trades5 = mean(deliveryDays.slice(-5), 'trades'), trades60 = mean(deliveryDays, 'trades');
+  if (pct3 == null || pct60 == null || !shares60 || !trades60) return null;
+  return { pct3, change: pct3 - pct60, sharesRatio: shares5 / shares60, tradesRatio: trades5 / trades60 };
+}
 
 // How each reporting industry moved against the Nifty over about 3 months (60 sessions).
 const threeMonths = (b) => (b?.length > 60 ? b.at(-1).close / b.at(-61).close - 1 : null);
@@ -148,6 +160,8 @@ function reasonsFor(r) {
   if (sector != null) out.push(`${r.industry} stocks are ${pct(sector)} against the Nifty over 3 months.`);
   if (r.signals?.volumeRatio != null) out.push(`Trading volume this week is ${r.signals.volumeRatio.toFixed(1)}x its normal level.`);
   if (r.signals?.fiiChange != null) out.push(`Last quarter FII holding changed ${r.signals.fiiChange >= 0 ? '+' : ''}${r.signals.fiiChange.toFixed(2)} points${r.signals.diiChange != null ? ` and DII ${r.signals.diiChange >= 0 ? '+' : ''}${r.signals.diiChange.toFixed(2)} points` : ''}.`);
+  const crowd = crowdSignals(r.symbol);
+  if (crowd) out.push(`Real buyers: ${crowd.pct3.toFixed(0)}% of traded shares were taken as delivery in the last 3 days (${crowd.change >= 0 ? '+' : ''}${crowd.change.toFixed(1)} points vs normal). Delivered shares are ${crowd.sharesRatio.toFixed(1)}x and number of trades ${crowd.tradesRatio.toFixed(1)}x normal.`);
   if (r.pe != null) out.push(`P/E is about ${Math.round(r.pe)}.`);
   return out;
 }
