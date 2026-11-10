@@ -100,13 +100,22 @@ function labelHistory(label) {
   const n = list.reduce((s, b) => s + b.n, 0);
   if (!n) return null;
   const weighted = (k) => list.reduce((s, b) => s + b[k] * b.n, 0) / n;
-  return { trades: n, winRate: weighted('win'), avgReturn: weighted('avg') };
+  return { trades: n, winRate: weighted('win'), avgReturn: weighted('avg'), betterRate: weighted('betterRate'), roseRate: weighted('roseRate') };
+}
+function summaryFor(r) {
+  if (r.score == null) return 'Not enough data to judge this one.';
+  if (r.rejected) return `Skip this one: ${r.rejected}.`;
+  const f = r.facts;
+  const trend = f.patYoY > 0.15 && f.salesYoY > 0.05 ? 'Profit and sales are both growing' : f.patYoY > 0 ? 'Profit is growing, but slowly' : 'Profit is falling compared to last year';
+  const base = f.baseQuarterYoY < -0.1 ? ", and last year's quarter was weak, so it is easier to beat" : f.baseQuarterYoY > 0.2 ? ", but last year's quarter was strong, so it is harder to beat" : '';
+  const run = f.run10 > 0.08 ? 'The stock already went up a lot, so some good news may be priced in.' : f.run10 < -0.05 ? 'The stock has been falling lately.' : 'The stock has not run up yet.';
+  return `${trend}${base}. ${run}`;
 }
 function reasonsFor(r) {
   if (r.score == null) return [r.rejected ?? 'Could not get enough data for this company.'];
   const f = r.facts, out = [];
   if (r.rejected) out.push(`Filtered out: ${r.rejected}.`);
-  out.push(`Profit ${pct(f.patYoY)} and sales ${pct(f.salesYoY)} vs last year (recent 2 quarters).`);
+  out.push(`Profit ${pct(f.patYoY)} and sales ${pct(f.salesYoY)} vs last year (last 3 quarters).`);
   if (f.baseQuarterYoY != null) out.push(f.baseQuarterYoY < -0.1 ? `Same quarter last year was weak (${pct(f.baseQuarterYoY)}), so it is easier to beat.` : f.baseQuarterYoY > 0.2 ? `Same quarter last year was strong (${pct(f.baseQuarterYoY)}), so it is harder to beat.` : `Same quarter last year was normal (${pct(f.baseQuarterYoY)}).`);
   if (f.marginDelta != null) out.push(`Margin ${f.marginDelta >= 0 ? 'up' : 'down'} ${Math.abs(f.marginDelta).toFixed(1)} points vs last year.`);
   if (f.reactionsSeen) out.push(`Beat Nifty after ${f.reactionWins} of its last ${f.reactionsSeen} results.`);
@@ -119,7 +128,7 @@ const appRows = scored.map((r) => {
   const c = universe.get(ev.symbol);
   const label = r.error ? 'No data' : opinion(r);
   return {
-    symbol: ev.symbol, company: c.company, industry: c.industry, date: ev.date, quarter: FY_QUARTER[targetQuarter(ev.date) % 4], label, score: r.score ?? null,
+    symbol: ev.symbol, company: c.company, industry: c.industry, date: ev.date, quarter: FY_QUARTER[targetQuarter(ev.date) % 4], label, score: r.score ?? null, summary: r.error ? 'Could not get data for this company today.' : summaryFor(r),
     reasons: r.error ? ['Could not get data for this company today.'] : reasonsFor(r),
     buyOn: r.buyOn ?? null, sellOn: r.sellOn ?? null, tooLate: !!r.tooLate, late: !!r.late, lastClose: r.facts?.close ?? null,
   };

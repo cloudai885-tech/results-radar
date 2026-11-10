@@ -11,7 +11,8 @@ const pct = (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
 
 function historyLine(label) {
   const h = data.history[label];
-  return h ? `In past results, this rating won ${(h.winRate * 100).toFixed(0)}% of trades, average ${pct(h.avgReturn)} per trade (${h.trades.toLocaleString('en-IN')} trades).` : '';
+  const whole = (v) => `${(v * 100).toFixed(0)}%`;
+  return h ? `Past record of this rating: result was better ${whole(h.betterRate)} of the time, stock rose ${whole(h.roseRate)} of the time, and trades with the stop-loss won ${whole(h.winRate)}, average ${pct(h.avgReturn)} (${h.trades.toLocaleString('en-IN')} trades).` : '';
 }
 
 function planHtml(c) {
@@ -28,6 +29,7 @@ function companyHtml(c) {
       <span class="badge ${CLASS[c.label]}">${esc(c.label)}</span>
     </summary>
     <div class="detail">
+      <p><b>Why:</b> ${esc(c.summary)}</p>
       <ul>${c.reasons.map((r) => `<li>${esc(r)}</li>`).join('')}</ul>
       <p class="muted">${esc(historyLine(c.label))}</p>
       ${planHtml(c)}
@@ -46,6 +48,7 @@ function renderPick() {
   el.innerHTML = `<div class="pick">
     <small>This week's pick</small>
     <h2>${esc(c.company)}</h2>
+    <p>${esc(c.summary)}</p>
     <ul>
       <li>${esc(c.quarter)} result on ${esc(dayName(c.date))}, rated ${esc(c.label)}</li>
       <li>Buy on ${esc(dayName(c.buyOn))}, near the close</li>

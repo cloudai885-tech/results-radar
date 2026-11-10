@@ -3,7 +3,7 @@
 // Weights are set by judgement and deliberately NOT fitted to the backtest.
 import { quarterOrdinal } from './sources.mjs';
 
-export const WEIGHTS = { profit: 20, sales: 15, consistency: 15, easyBase: 15, margin: 10, reactions: 15, momentum: 10 };
+export const WEIGHTS = { profit: 25, sales: 15, consistency: 20, easyBase: 15, margin: 10, reactions: 5, momentum: 10 };
 export const RULES = { minTradedValueRs: 10e7, maxRunUp10d: 0.2, stopLoss: 0.03, roundTripCost: 0.0035, sessionsBeforeToBuy: 2 };
 
 const scale = (v, lo, hi) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
@@ -25,6 +25,13 @@ export function targetQuarter(dateIso) {
   const end = Date.UTC(Math.floor(ord / 4), endMonth, 0);
   if ((Date.UTC(y, m - 1, d) - end) / 864e5 < 10) ord -= 1;
   return ord;
+}
+
+// Used only when grading past predictions: did the reported quarter beat the same quarter last year?
+export function resultWasBetter(quarters, dateIso) {
+  const T = targetQuarter(dateIso);
+  const g = growth(quarters.get(T)?.pat, quarters.get(T - 4)?.pat);
+  return g == null ? null : g > 0;
 }
 
 export function indexBefore(bars, dateIso) {
@@ -55,15 +62,17 @@ export function reactionFor(bars, nifty, dateIso) {
 export function scoreEvent({ dateIso, quarters, bars, nifty, pastReactions }) {
   const T = targetQuarter(dateIso);
   const q = (o) => quarters.get(o) ?? {};
-  const L = T - 1, L1 = T - 2;
+  const L = T - 1, L1 = T - 2, L2 = T - 3;
   if (q(L).pat == null || q(L - 4).pat == null) return { rejected: 'not enough quarterly history' };
 
-  const salesG = [growth(q(L).sales, q(L - 4).sales), growth(q(L1).sales, q(L1 - 4).sales)].filter((x) => x != null);
-  const patG = [growth(q(L).pat, q(L - 4).pat), growth(q(L1).pat, q(L1 - 4).pat)].filter((x) => x != null);
+  // Every quarter is compared with the same quarter a year earlier, which removes seasonal swings.
+  const lastThree = [L, L1, L2];
+  const salesG = lastThree.map((o) => growth(q(o).sales, q(o - 4).sales)).filter((x) => x != null);
+  const patG = lastThree.map((o) => growth(q(o).pat, q(o - 4).pat)).filter((x) => x != null);
   if (!salesG.length || !patG.length) return { rejected: 'not enough quarterly history' };
 
   const yoyFlags = [];
-  for (let o = L; o > L - 6; o--) { const g = growth(q(o).pat, q(o - 4).pat); if (g != null) yoyFlags.push(g > 0 ? 1 : 0); }
+  for (const o of lastThree) { const g = growth(q(o).pat, q(o - 4).pat); if (g != null) yoyFlags.push(g > 0 ? 1 : 0); }
   const baseGrowth = growth(q(T - 4).pat, q(T - 8).pat);
   const marginDelta = q(L).opm != null && q(L - 4).opm != null ? q(L).opm - q(L - 4).opm : null;
 
