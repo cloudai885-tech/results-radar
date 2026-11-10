@@ -94,7 +94,7 @@ async function load() {
   try {
     data = await fetchData();
   } catch {
-    updated.textContent = 'No data yet. Run the scanner first.';
+    updated.textContent = 'No ratings yet. Check back after the next update.';
     return;
   }
   updated.textContent = `Updated ${new Date(data.generated).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}`;

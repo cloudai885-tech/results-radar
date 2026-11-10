@@ -18,7 +18,7 @@ body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 syst
 .top { padding-top: max(20px, env(safe-area-inset-top)); }
 h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; }
 .muted { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
-footer { padding-top: 12px; padding-bottom: 32px; }
+footer.muted { margin: 0 auto; padding-top: 12px; padding-bottom: 32px; }
 
 .pick { background: var(--accent); color: var(--accent-text); border-radius: 16px; padding: 16px; margin-top: 16px; }
 .pick small { opacity: 0.7; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
