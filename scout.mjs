@@ -22,8 +22,8 @@ function nextSessionAfter(dateIso) { let d = addDays(dateIso, 1); while (!isSess
 const firstOpenSession = isSession(today) && !marketClosed ? today : nextSessionAfter(today);
 
 const universe = new Map((await nifty500()).map((c) => [c.symbol, c]));
-// A 7-day window starting 3 days out, so there is still time to buy before each result.
-const windowStart = addDays(today, 3);
+// Show everything from today to 9 days out. Results too close to buy are still shown, marked too late.
+const windowStart = today;
 const horizon = addDays(today, 9);
 const calendar = (await eventCalendar()).filter((e) => universe.has(e.symbol) && e.date >= windowStart && e.date <= horizon);
 const nifty = await dailyBars('^NSEI');
