@@ -180,14 +180,47 @@ function renderIpos() {
     ${rows ? `<div class="track"><div class="section-label">How the score did on recent listings</div>${rows}<p class="note">A small sample, so treat it as a rough guide. GMP is an unofficial price and can change fast.</p></div>` : ''}`;
 }
 
-function showTab(name) {
-  document.getElementById('view-results').hidden = name !== 'results';
-  document.getElementById('view-ipo').hidden = name !== 'ipo';
-  document.getElementById('tab-results').setAttribute('aria-selected', String(name === 'results'));
-  document.getElementById('tab-ipo').setAttribute('aria-selected', String(name === 'ipo'));
+function gapCard(c, rules) {
+  const go = c.status === 'go';
+  const plan = go && c.openPrice ? `<div class="steps">
+      <div class="step"><span>Buy at open</span><b>${esc(money(c.openPrice))}</b></div>
+      <div class="step"><span>Stop-loss -${rules.stop * 100}%</span><b>${esc(money(c.stopPrice))}</b></div>
+      <div class="step"><span>Sell by</span><b>3:20 pm</b></div>
+    </div>` : '';
+  return `<details class="card ${go ? 'r-excellent' : 'r-none'}"${go ? ' open' : ''}>
+    <summary>
+      <div class="name"><b>${esc(cleanName(c.company))}</b><span>Result ${esc(c.announced.slice(5))} · qtr ${c.qoq != null ? esc(pct(c.qoq)) : '–'} · year ${c.yoy != null ? esc(pct(c.yoy)) : '–'}</span></div>
+      <div class="gmp"><b class="${c.gap > 0 ? 'pos' : c.gap < 0 ? 'neg' : ''}">${c.gap != null ? esc(pct(c.gap)) : '–'}</b><span>opening</span></div>
+      <span class="badge">${go ? 'GO' : 'Skip'}</span>
+      ${CHEVRON}
+    </summary>
+    <div class="detail"><p>${esc(c.reason)}.</p>${plan}</div>
+  </details>`;
 }
-document.getElementById('tab-results').addEventListener('click', () => showTab('results'));
-document.getElementById('tab-ipo').addEventListener('click', () => showTab('ipo'));
+
+function renderGapGo() {
+  const el = document.getElementById('view-gap');
+  const g = data.gapgo;
+  const todayIso = new Date(Date.now() + 19800e3).toISOString().slice(0, 10);
+  const intro = `<div class="hero r-excellent"><small>Gap &amp; Go · watch only</small>
+    <p style="margin:6px 0 0">Result beat <b>both</b> last quarter and last year, and the stock opens <b>5-20% up</b>: buy at the open, ${g?.rules ? g.rules.stop * 100 : 5}% stop-loss, sell by 3:20 pm.</p>
+    ${g?.backtest ? `<p class="note">Tested ${esc(g.backtest.period)}: ${g.backtest.trades} trades, average ${esc(pct(g.backtest.avgPerTrade))} per trade after charges, ${whole(g.backtest.winRate)} won. Half the trades lose, so watch it before using money.</p>` : ''}
+  </div>`;
+  if (!g || g.date !== todayIso) { el.innerHTML = intro + '<p class="empty">No check yet today. It runs around 9:05 am on market days.</p>'; return; }
+  const go = g.candidates.filter((c) => c.status === 'go');
+  el.innerHTML = `${intro}
+    <div class="day-head"><h2>Today<span>${go.length ? `${go.length} GO` : 'no GO'}</span></h2><span>${g.candidates.length} overnight result${g.candidates.length === 1 ? '' : 's'}</span></div>
+    ${g.candidates.map((c) => gapCard(c, g.rules)).join('') || '<p class="empty">No Nifty 500 results came out overnight.</p>'}
+    ${g.preOpenReady ? '' : '<p class="note">Pre-open prices were not ready when this ran.</p>'}`;
+}
+
+function showTab(name) {
+  for (const t of ['results', 'gap', 'ipo']) {
+    document.getElementById(`view-${t}`).hidden = name !== t;
+    document.getElementById(`tab-${t}`).setAttribute('aria-selected', String(name === t));
+  }
+}
+for (const t of ['results', 'gap', 'ipo']) document.getElementById(`tab-${t}`).addEventListener('click', () => showTab(t));
 
 // Reads from Supabase once config.js is filled in, otherwise from the local data.json.
 async function fetchData() {
@@ -220,6 +253,7 @@ async function load() {
   renderFilters();
   renderDays();
   renderIpos();
+  renderGapGo();
 }
 
 load();

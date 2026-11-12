@@ -197,6 +197,9 @@ fs.writeFileSync(new URL('./app/data.json', import.meta.url), JSON.stringify(pay
 
 if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
   const key = process.env.SUPABASE_SERVICE_KEY;
+  // Keep the morning gap-and-go list, which a separate job writes into the same row.
+  const current = await (await fetch(`${process.env.SUPABASE_URL}/rest/v1/radar?id=eq.1&select=payload`, { headers: { apikey: key } })).json();
+  if (current?.[0]?.payload?.gapgo) payload.gapgo = current[0].payload.gapgo;
   const res = await fetch(`${process.env.SUPABASE_URL}/rest/v1/radar`, {
     method: 'POST',
     headers: { apikey: key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' },

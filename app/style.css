@@ -122,3 +122,10 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .track-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; font-size: 13px; }
 .note { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
 .empty { text-align: center; padding: 40px 16px; color: var(--muted); background: var(--surface); border: 1px dashed var(--line); border-radius: 14px; }
+
+/* Three tabs need their own row on phones. */
+@media (max-width: 520px) {
+  .top-inner { flex-wrap: wrap; row-gap: 8px; }
+  .tabs { width: 100%; }
+  .tabs button { flex: 1; }
+}

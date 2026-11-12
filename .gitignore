@@ -5,3 +5,4 @@ data/backtest.log
 data/backtest-events.json
 app/data.json
 reports/
+app/gapgo.json

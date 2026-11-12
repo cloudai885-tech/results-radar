@@ -1,0 +1,20 @@
+name: Gap and go (morning)
+on:
+  schedule:
+    - cron: '33 3 * * 1-5' # 9:03 am India time; pre-open prices are ready from about 9:01
+    - cron: '45 3 * * 1-5' # backup run in case the first one is delayed
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node gapgo.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

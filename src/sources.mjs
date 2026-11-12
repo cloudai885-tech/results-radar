@@ -110,6 +110,18 @@ export async function pastResultDates(symbol, fromDDMMYYYY, toDDMMYYYY) {
   return [...new Set(dates)].sort();
 }
 
+// Company announcements between two dates (ISO), newest first.
+export async function announcements(fromIso, toIso, ttlHours = 0.25) {
+  const nse = (iso) => iso.split('-').reverse().join('-');
+  return (await nseJson(`corporate-announcements?index=equities&from_date=${nse(fromIso)}&to_date=${nse(toIso)}`, ttlHours)) ?? [];
+}
+
+// Pre-open session (9:00-9:08): expected opening price (IEP) and previous close for every stock.
+export async function preOpen(ttlHours = 0.05) {
+  const j = await nseJson('market-data-pre-open?key=ALL', ttlHours);
+  return new Map((j?.data ?? []).map((r) => [r.metadata.symbol, { iep: r.metadata.iep, prevClose: r.metadata.previousClose, time: r.detail?.preOpenMarket?.lastUpdateTime ?? '' }]));
+}
+
 export async function holidays() {
   const j = await nseJson('holiday-master?type=trading', 24 * 7);
   return new Set((j.CM ?? []).map((h) => isoFromNse(h.tradingDate)));
