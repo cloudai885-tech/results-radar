@@ -194,11 +194,11 @@ function gapCard(c, rules, goCount) {
       <li><b>Sell DOWN at ₹${esc(Math.round(c.stopPrice))}</b><span>loss about ${esc(money(shares * (c.openPrice - c.stopPrice)))}</span></li>
       <li><b>Neither? Sell at 3:20 pm</b><span>never hold overnight</span></li>
     </ol>` : '';
-  return `<details class="card ${go ? 'r-excellent' : 'r-none'}"${go ? ' open' : ''}>
+  return `<details class="card ${go ? 'r-excellent' : c.status === 'watch' ? 'r-good' : 'r-none'}"${go ? ' open' : ''}>
     <summary>
       <div class="name"><b>${esc(cleanName(c.company))}</b><span>Result ${esc(c.announced.slice(5))} · qtr ${c.qoq != null ? esc(pct(c.qoq)) : '–'} · year ${c.yoy != null ? esc(pct(c.yoy)) : '–'}</span></div>
       <div class="gmp"><b class="${c.gap > 0 ? 'pos' : c.gap < 0 ? 'neg' : ''}">${c.gap != null ? esc(pct(c.gap)) : '–'}</b><span>opening</span></div>
-      <span class="badge">${go ? 'GO' : 'Skip'}</span>
+      <span class="badge">${go ? 'GO' : c.status === 'watch' ? 'Watch' : 'Skip'}</span>
       ${CHEVRON}
     </summary>
     <div class="detail"><p>${esc(c.reason)}.</p>${plan}</div>
@@ -213,7 +213,7 @@ function renderGapGo() {
     <p style="margin:6px 0 0">Result beat <b>both</b> last quarter and last year, and the stock opens <b>5-20% up</b>: buy at the open, sell at +${g?.rules?.target ? g.rules.target * 100 : 7}% profit or -${g?.rules ? g.rules.stop * 100 : 3}% stop, otherwise by 3:20 pm.</p>
     ${g?.backtest ? `<p class="note">Tested ${esc(g.backtest.period)}: ${g.backtest.trades} trades, average ${esc(pct(g.backtest.avgPerTrade))} per trade after charges, ${whole(g.backtest.winRate)} won. Half the trades lose, so watch it before using money.</p>` : ''}
   </div>`;
-  if (!g || g.date !== todayIso) { el.innerHTML = intro + '<p class="empty">No check yet today. It runs around 9:05 am on market days.</p>'; return; }
+  if (!g || g.date !== todayIso) { el.innerHTML = intro + '<p class="empty">No check yet today. It runs at about 8:30 am (early watchlist) and 9:03 am (GO list) on market days.</p>'; return; }
   const go = g.candidates.filter((c) => c.status === 'go');
   el.innerHTML = `${intro}
     <div class="day-head"><h2>Today<span>${go.length ? `${go.length} GO` : 'no GO'}</span></h2><span>${g.candidates.length} overnight result${g.candidates.length === 1 ? '' : 's'}</span></div>

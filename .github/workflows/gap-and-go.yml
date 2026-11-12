@@ -1,6 +1,7 @@
 name: Gap and go (morning)
 on:
   schedule:
+    - cron: '0 3 * * 1-5'  # 8:30 am India time: early watchlist of good overnight results
     - cron: '33 3 * * 1-5' # 9:03 am India time; pre-open prices are ready from about 9:01
     - cron: '45 3 * * 1-5' # backup run in case the first one is delayed
   workflow_dispatch:

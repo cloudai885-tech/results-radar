@@ -57,7 +57,7 @@ const rows = (await mapPool([...overnight.keys()], 3, async (symbol) => {
   else if (qoq <= 0 && yoy <= 0) reason = 'Profit fell vs last quarter and last year';
   else if (qoq <= 0) reason = `Did not beat last quarter (${pct(qoq)})`;
   else if (yoy <= 0) reason = `Did not beat last year (${pct(yoy)})`;
-  else if (gap == null) reason = 'Pre-open price not ready yet';
+  else if (gap == null) { status = 'watch'; reason = 'Good result. Check its opening price after 9:00 am'; }
   else if (gap < RULES.minGap) reason = `Opening ${pct(gap)}, needs +5% or more`;
   else if (gap >= RULES.maxGap) reason = `Opening ${pct(gap)}, too big a jump`;
   else if (traded != null && traded < RULES.minTradedValueRs) reason = 'Too little trading to get in and out';
@@ -68,7 +68,7 @@ const rows = (await mapPool([...overnight.keys()], 3, async (symbol) => {
     stopPrice: p?.iep ? Math.round(p.iep * (1 - RULES.stop) * 100) / 100 : null,
     targetPrice: p?.iep ? Math.round(p.iep * (1 + RULES.target) * 100) / 100 : null, status, reason,
   };
-})).filter((r) => r && !r.error).sort((a, b) => (a.status === 'go' ? -1 : 0) - (b.status === 'go' ? -1 : 0) || (b.gap ?? -9) - (a.gap ?? -9));
+})).filter((r) => r && !r.error).sort((a, b) => ['go', 'watch', 'skip'].indexOf(a.status) - ['go', 'watch', 'skip'].indexOf(b.status) || (b.gap ?? -9) - (a.gap ?? -9));
 
 const gapgo = { date: today, generated: new Date().toISOString(), preOpenReady, rules: RULES, backtest: BACKTEST, candidates: rows };
 fs.writeFileSync(new URL('./app/gapgo.json', import.meta.url), JSON.stringify(gapgo, null, 1));
