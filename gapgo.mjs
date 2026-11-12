@@ -1,12 +1,12 @@
 // Morning check (about 9:05 am) for "gap-and-go" after a good overnight result.
 // Rule, tested on Nov 2024 - Nov 2026: result beat BOTH last quarter and last year, stock opens 5-20% up,
-// buy at the open, 5% stop-loss, sell by 3:20 pm. Watch-only: the app shows it, nothing is traded.
+// buy at the open, take +7% profit or stop at -3%, else sell by 3:20 pm. Watch-only: the app shows it, nothing is traded.
 import fs from 'node:fs';
 import { nifty500, announcements, preOpen, fundamentals, dailyBars, holidays, mapPool } from './src/sources.mjs';
 import { targetQuarter } from './src/score.mjs';
 
-const RULES = { minGap: 0.05, maxGap: 0.2, stop: 0.05, minTradedValueRs: 5e7 };
-const BACKTEST = { trades: 98, avgPerTrade: 0.0083, winRate: 0.52, period: 'Nov 2024 - Nov 2026' };
+const RULES = { minGap: 0.05, maxGap: 0.2, stop: 0.03, target: 0.07, capitalRs: 20000, minTradedValueRs: 5e7 };
+const BACKTEST = { trades: 98, avgPerTrade: 0.0118, winRate: 0.49, period: 'Nov 2024 - Nov 2026' };
 
 const nowIst = new Date(Date.now() + 19800e3);
 const today = nowIst.toISOString().slice(0, 10);
@@ -65,7 +65,8 @@ const rows = (await mapPool([...overnight.keys()], 3, async (symbol) => {
   return {
     symbol, company: universe.get(symbol).company, announced: `${t.date} ${t.hhmm}`,
     qoq, yoy, gap, openPrice: p?.iep ?? null, prevClose: p?.prevClose ?? null,
-    stopPrice: p?.iep ? Math.round(p.iep * (1 - RULES.stop) * 100) / 100 : null, status, reason,
+    stopPrice: p?.iep ? Math.round(p.iep * (1 - RULES.stop) * 100) / 100 : null,
+    targetPrice: p?.iep ? Math.round(p.iep * (1 + RULES.target) * 100) / 100 : null, status, reason,
   };
 })).filter((r) => r && !r.error).sort((a, b) => (a.status === 'go' ? -1 : 0) - (b.status === 'go' ? -1 : 0) || (b.gap ?? -9) - (a.gap ?? -9));
 

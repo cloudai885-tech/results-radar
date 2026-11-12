@@ -180,13 +180,18 @@ function renderIpos() {
     ${rows ? `<div class="track"><div class="section-label">How the score did on recent listings</div>${rows}<p class="note">A small sample, so treat it as a rough guide. GMP is an unofficial price and can change fast.</p></div>` : ''}`;
 }
 
-function gapCard(c, rules) {
+function gapCard(c, rules, goCount) {
   const go = c.status === 'go';
+  // Capital is split across the day's GO stocks (at most 2).
+  const perStock = (rules.capitalRs ?? 20000) / Math.min(Math.max(goCount, 1), 2);
+  const shares = c.openPrice ? Math.floor(perStock / c.openPrice) : 0;
+  const target = c.targetPrice ?? (c.openPrice ? c.openPrice * (1 + (rules.target ?? 0.07)) : null);
   const plan = go && c.openPrice ? `<div class="steps">
       <div class="step"><span>Buy at open</span><b>${esc(money(c.openPrice))}</b></div>
-      <div class="step"><span>Stop-loss -${rules.stop * 100}%</span><b>${esc(money(c.stopPrice))}</b></div>
-      <div class="step"><span>Sell by</span><b>3:20 pm</b></div>
-    </div>` : '';
+      <div class="step"><span>Target +${(rules.target ?? 0.07) * 100}%</span><b>${esc(money(target))}</b></div>
+      <div class="step"><span>Stop -${rules.stop * 100}%</span><b>${esc(money(c.stopPrice))}</b></div>
+    </div>
+    <p class="note">${shares} shares, about ${esc(money(shares * c.openPrice))}. Sell at the target or the stop, whichever comes first. If neither, sell at 3:20 pm. Win ≈ ${esc(money(shares * (target - c.openPrice)))}, loss ≈ ${esc(money(shares * (c.openPrice - c.stopPrice)))}.</p>` : '';
   return `<details class="card ${go ? 'r-excellent' : 'r-none'}"${go ? ' open' : ''}>
     <summary>
       <div class="name"><b>${esc(cleanName(c.company))}</b><span>Result ${esc(c.announced.slice(5))} · qtr ${c.qoq != null ? esc(pct(c.qoq)) : '–'} · year ${c.yoy != null ? esc(pct(c.yoy)) : '–'}</span></div>
@@ -203,14 +208,14 @@ function renderGapGo() {
   const g = data.gapgo;
   const todayIso = new Date(Date.now() + 19800e3).toISOString().slice(0, 10);
   const intro = `<div class="hero r-excellent"><small>Gap &amp; Go · watch only</small>
-    <p style="margin:6px 0 0">Result beat <b>both</b> last quarter and last year, and the stock opens <b>5-20% up</b>: buy at the open, ${g?.rules ? g.rules.stop * 100 : 5}% stop-loss, sell by 3:20 pm.</p>
+    <p style="margin:6px 0 0">Result beat <b>both</b> last quarter and last year, and the stock opens <b>5-20% up</b>: buy at the open, sell at +${g?.rules?.target ? g.rules.target * 100 : 7}% profit or -${g?.rules ? g.rules.stop * 100 : 3}% stop, otherwise by 3:20 pm.</p>
     ${g?.backtest ? `<p class="note">Tested ${esc(g.backtest.period)}: ${g.backtest.trades} trades, average ${esc(pct(g.backtest.avgPerTrade))} per trade after charges, ${whole(g.backtest.winRate)} won. Half the trades lose, so watch it before using money.</p>` : ''}
   </div>`;
   if (!g || g.date !== todayIso) { el.innerHTML = intro + '<p class="empty">No check yet today. It runs around 9:05 am on market days.</p>'; return; }
   const go = g.candidates.filter((c) => c.status === 'go');
   el.innerHTML = `${intro}
     <div class="day-head"><h2>Today<span>${go.length ? `${go.length} GO` : 'no GO'}</span></h2><span>${g.candidates.length} overnight result${g.candidates.length === 1 ? '' : 's'}</span></div>
-    ${g.candidates.map((c) => gapCard(c, g.rules)).join('') || '<p class="empty">No Nifty 500 results came out overnight.</p>'}
+    ${g.candidates.map((c) => gapCard(c, g.rules, go.length)).join('') || '<p class="empty">No Nifty 500 results came out overnight.</p>'}
     ${g.preOpenReady ? '' : '<p class="note">Pre-open prices were not ready when this ran.</p>'}`;
 }
 
