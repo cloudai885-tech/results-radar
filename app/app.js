@@ -186,12 +186,14 @@ function gapCard(c, rules, goCount) {
   const perStock = (rules.capitalRs ?? 20000) / Math.min(Math.max(goCount, 1), 2);
   const shares = c.openPrice ? Math.floor(perStock / c.openPrice) : 0;
   const target = c.targetPrice ?? (c.openPrice ? c.openPrice * (1 + (rules.target ?? 0.07)) : null);
-  const plan = go && c.openPrice ? `<div class="steps">
-      <div class="step"><span>Buy at open</span><b>${esc(money(c.openPrice))}</b></div>
-      <div class="step"><span>Target +${(rules.target ?? 0.07) * 100}%</span><b>${esc(money(target))}</b></div>
-      <div class="step"><span>Stop -${rules.stop * 100}%</span><b>${esc(money(c.stopPrice))}</b></div>
-    </div>
-    <p class="note">${shares} shares, about ${esc(money(shares * c.openPrice))}. Sell at the target or the stop, whichever comes first. If neither, sell at 3:20 pm. Win ≈ ${esc(money(shares * (target - c.openPrice)))}, loss ≈ ${esc(money(shares * (c.openPrice - c.stopPrice)))}.</p>` : '';
+  // Limit 1% above the indicative price: fills at the official open, but never chases a big jump.
+  const buyAt = c.openPrice ? Math.round(c.openPrice * 1.01) : null;
+  const plan = go && c.openPrice ? `<ol class="simple">
+      <li><b>Buy ${shares} shares at ₹${esc(buyAt)}</b><span>Intraday, before 9:08 am</span></li>
+      <li><b>Sell UP at ₹${esc(Math.round(target))}</b><span>profit about ${esc(money(shares * (target - c.openPrice)))}</span></li>
+      <li><b>Sell DOWN at ₹${esc(Math.round(c.stopPrice))}</b><span>loss about ${esc(money(shares * (c.openPrice - c.stopPrice)))}</span></li>
+      <li><b>Neither? Sell at 3:20 pm</b><span>never hold overnight</span></li>
+    </ol>` : '';
   return `<details class="card ${go ? 'r-excellent' : 'r-none'}"${go ? ' open' : ''}>
     <summary>
       <div class="name"><b>${esc(cleanName(c.company))}</b><span>Result ${esc(c.announced.slice(5))} · qtr ${c.qoq != null ? esc(pct(c.qoq)) : '–'} · year ${c.yoy != null ? esc(pct(c.yoy)) : '–'}</span></div>

@@ -129,3 +129,7 @@ details[open] > summary .chev { transform: rotate(180deg); }
   .tabs { width: 100%; }
   .tabs button { flex: 1; }
 }
+
+.simple { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 8px; }
+.simple li b { display: block; font-size: 16px; }
+.simple li span { color: var(--muted); font-size: 12px; }
