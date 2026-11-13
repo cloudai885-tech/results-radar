@@ -7,6 +7,8 @@ import { nifty500, eventCalendar, announcements, fundamentals, holidays } from '
 import { targetQuarter } from './src/score.mjs';
 
 const STOP_AT = process.env.STOP_AT ?? '14:35';
+// Stocks you own (comma list in HOLD): alerted at any time of day, good or bad, so you can act on them.
+const HOLD = new Set((process.env.HOLD ?? '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean));
 const LAST_ALERT_MINS = 14 * 60 + 30; // later than 2:30 pm leaves too little time in the day
 const ist = () => new Date(Date.now() + 19800e3);
 const minsNow = () => ist().getUTCHours() * 60 + ist().getUTCMinutes();
@@ -56,10 +58,11 @@ const filedMins = (s) => { const m = /(\d+)-(\w{3})-(\d{4}) (\d+):(\d+)/.exec(s 
 async function check() {
   const list = await announcements(today, today, 0);
   for (const a of list) {
-    if (!universe.has(a.symbol) || seen.has(a.symbol)) continue;
+    const mine = HOLD.has(a.symbol);
+    if ((!universe.has(a.symbol) && !mine) || seen.has(a.symbol)) continue;
     if (!/Financial Result|Outcome of Board Meeting|Integrated Filing- Financial/i.test(a.desc) || !/result/i.test(a.attchmntText ?? '')) continue;
     const at = filedMins(a.an_dt);
-    if (at == null || at < 555 || at > LAST_ALERT_MINS) continue;
+    if (at == null || (!mine && (at < 555 || at > LAST_ALERT_MINS))) continue;
     seen.add(a.symbol);
     const p = await profitToBeat(a.symbol);
     const lag = minsNow() - at;
@@ -68,19 +71,22 @@ async function check() {
       need != null
         ? `GOOD only if quarterly net profit (consolidated) is above ${crore(need)}  (last quarter ${crore(p.lastQtr)}, same quarter last year ${crore(p.lastYear)}).`
         : 'Past profit not available: check the result yourself.',
-      'If good: buy within 15 min of the result, sell at +7% or -3%, else by 3:20 pm. If not: skip.',
+      mine ? 'You own this. Send me the numbers and I will tell you hold or sell.' : 'If good: buy within 15 min of the result, sell at +7% or -3%, else by 3:20 pm. If not: skip.',
       a.voiceSummary ? `NSE summary: ${a.voiceSummary.slice(0, 300)}` : '',
       lag > 15 ? `Note: this alert is ${lag} min after the filing, which is late. Skip it.` : '',
     ].filter(Boolean);
     console.log(`${a.an_dt} ${a.symbol} (alert ${lag} min after filing)`);
     if (topic) {
       const r = await fetch(`https://ntfy.sh/${topic}`, { method: 'POST', body: lines.join('\n'),
-        headers: { Title: `RESULT OUT ${a.symbol} at ${a.an_dt.slice(12, 17)}`, Priority: 'urgent', Tags: 'zap', ...(a.attchmntFile ? { Click: a.attchmntFile, Actions: `view, Open result PDF, ${a.attchmntFile}` } : {}) } });
+        headers: { Title: `${mine ? 'YOUR STOCK ' : ''}RESULT OUT ${a.symbol} at ${a.an_dt.slice(12, 17)}`, Priority: 'urgent', Tags: 'zap', ...(a.attchmntFile ? { Click: a.attchmntFile, Actions: `view, Open result PDF, ${a.attchmntFile}` } : {}) } });
       if (!r.ok) console.log('notify failed', r.status);
     }
     await saveSeen();
   }
 }
+
+// Started late by hand: do not alert old filings from earlier today (your own stocks still alert).
+if (process.env.SKIP_EXISTING) for (const x of await announcements(today, today, 0)) if (!HOLD.has(x.symbol)) seen.add(x.symbol);
 
 while (minsNow() < toMins(STOP_AT)) {
   const start = Date.now();
