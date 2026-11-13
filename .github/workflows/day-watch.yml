@@ -1,0 +1,39 @@
+name: Live results watch (market hours)
+on:
+  schedule:
+    - cron: '40 3 * * 1-5'  # 9:10 am India time, runs until 12:30 pm
+    - cron: '50 6 * * 1-5'  # 12:20 pm India time, runs until 2:35 pm
+  workflow_dispatch:
+
+concurrency:
+  group: day-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      # Runs for hours, so only on a public repo (free minutes). A private repo would use up the monthly allowance.
+      - name: Only when the repo is public
+        id: public
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/${{ github.repository }})
+          echo "ok=$([ "$code" = "200" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+          [ "$code" = "200" ] || echo "Repo is private, skipping the long watch."
+      - uses: actions/checkout@v4
+        if: steps.public.outputs.ok == 'yes'
+      - uses: actions/setup-node@v4
+        if: steps.public.outputs.ok == 'yes'
+        with:
+          node-version: 24
+      - name: Watch for results every minute
+        if: steps.public.outputs.ok == 'yes'
+        run: |
+          now=$(TZ=Asia/Kolkata date +%H%M)
+          if [ "$now" -lt 1215 ]; then export STOP_AT=12:30; else export STOP_AT=14:35; fi
+          node daywatch.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}

@@ -74,7 +74,7 @@ async function nseRefreshCookie() {
   nseCookie = r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
 }
 
-async function nseJson(apiPath, ttlHours) {
+export async function nseJson(apiPath, ttlHours) {
   const url = 'https://www.nseindia.com/api/' + apiPath;
   const cached = cachePath(url);
   const fresh = fs.existsSync(cached) && (Date.now() - fs.statSync(cached).mtimeMs) / 36e5 < ttlHours;
