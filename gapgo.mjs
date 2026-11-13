@@ -70,15 +70,35 @@ const rows = (await mapPool([...overnight.keys()], 3, async (symbol) => {
   };
 })).filter((r) => r && !r.error).sort((a, b) => ['go', 'watch', 'skip'].indexOf(a.status) - ['go', 'watch', 'skip'].indexOf(b.status) || (b.gap ?? -9) - (a.gap ?? -9));
 
-const gapgo = { date: today, generated: new Date().toISOString(), preOpenReady, rules: RULES, backtest: BACKTEST, candidates: rows };
+// What this morning's earlier runs already sent, so the phone is not pinged twice for the same stock.
+const sb = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY ? { url: `${process.env.SUPABASE_URL}/rest/v1/radar`, key: process.env.SUPABASE_SERVICE_KEY } : null;
+const current = sb ? await (await fetch(`${sb.url}?id=eq.1&select=payload`, { headers: { apikey: sb.key } })).json() : null;
+const before = current?.[0]?.payload?.gapgo;
+const notified = new Set(before?.date === today ? before.notified ?? [] : []);
+
+// Phone notification through ntfy.sh (free app, no account or phone number). Only when NTFY_TOPIC is set.
+const topic = process.env.NTFY_TOPIC;
+const fresh = rows.filter((r) => (r.status === 'go' || r.status === 'watch') && !notified.has(`${r.status}:${r.symbol}`));
+if (topic && fresh.length) {
+  const go = fresh.filter((r) => r.status === 'go'), watch = fresh.filter((r) => r.status === 'watch');
+  const perStock = RULES.capitalRs / Math.min(Math.max(rows.filter((r) => r.status === 'go').length, 1), 2);
+  const lines = [
+    ...go.map((r) => `GO ${r.symbol}: buy ${Math.floor(perStock / r.openPrice)} at Rs ${Math.round(r.openPrice * 1.01)} (intraday). Sell up Rs ${r.targetPrice}, sell down Rs ${r.stopPrice}, else 3:20 pm.`),
+    ...watch.map((r) => `Watch ${r.symbol}: good result (qtr ${pct(r.qoq)}, year ${pct(r.yoy)}). Check opening price after 9:00.`),
+  ];
+  const res = await fetch(`https://ntfy.sh/${topic}`, { method: 'POST', body: lines.join('\n'), headers: { Title: go.length ? `Gap & Go: ${go.length} GO today` : 'Gap & Go: watch list', Priority: go.length ? 'high' : 'default', Tags: go.length ? 'rocket' : 'eyes' } });
+  console.log(res.ok ? `Phone notified: ${fresh.length}` : `Notification failed: ${res.status}`);
+  if (res.ok) fresh.forEach((r) => notified.add(`${r.status}:${r.symbol}`));
+}
+
+const gapgo = { date: today, generated: new Date().toISOString(), preOpenReady, rules: RULES, backtest: BACKTEST, candidates: rows, notified: [...notified] };
 fs.writeFileSync(new URL('./app/gapgo.json', import.meta.url), JSON.stringify(gapgo, null, 1));
 console.log(`${today}: ${overnight.size} overnight results, pre-open ${preOpenReady ? 'ready' : 'NOT ready'}`);
 for (const r of rows) console.log(r.status === 'go' ? 'GO  ' : '    ', r.symbol.padEnd(12), r.gap != null ? pct(r.gap).padStart(7) : '      -', '|', r.reason);
 
 // Merge into the app's Supabase row without touching the rest of the data.
-if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY) {
-  const url = `${process.env.SUPABASE_URL}/rest/v1/radar`, key = process.env.SUPABASE_SERVICE_KEY;
-  const current = await (await fetch(`${url}?id=eq.1&select=payload`, { headers: { apikey: key } })).json();
+if (sb) {
+  const { url, key } = sb;
   const payload = { ...(current?.[0]?.payload ?? {}), gapgo };
   const res = await fetch(url, { method: 'POST', headers: { apikey: key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ id: 1, payload, updated_at: new Date().toISOString() }) });
   if (!res.ok) throw new Error(`Supabase upload failed: ${res.status} ${await res.text()}`);
