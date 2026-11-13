@@ -1,10 +1,16 @@
 name: Gap and go (morning)
 on:
   schedule:
-    - cron: '0 3 * * 1-5'  # 8:30 am India time: early watchlist of good overnight results
-    - cron: '33 3 * * 1-5' # 9:03 am India time; pre-open prices are ready from about 9:01
-    - cron: '45 3 * * 1-5' # backup run in case the first one is delayed
+    - cron: '0 3 * * 1-5'          # 8:30 am India time: early watchlist of good overnight results
+    - cron: '33 3 * * 1-5'         # 9:03 am India time; pre-open prices are ready from about 9:01
+    - cron: '45 3 * * 1-5'         # backup run in case the first one is delayed
+    - cron: '5,35 10-18 * * 1-5'   # every 30 min, 3:35 pm to midnight: alert new results at once
+    - cron: '35 4,8,12,16 * * 0,6' # weekends: results announced on Sat/Sun
   workflow_dispatch:
+
+concurrency:
+  group: gap-and-go
+  cancel-in-progress: false
 
 jobs:
   check:

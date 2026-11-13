@@ -213,12 +213,13 @@ function renderGapGo() {
     <p style="margin:6px 0 0">Result beat <b>both</b> last quarter and last year, and the stock opens <b>5-20% up</b>: buy at the open, sell at +${g?.rules?.target ? g.rules.target * 100 : 7}% profit or -${g?.rules ? g.rules.stop * 100 : 3}% stop, otherwise by 3:20 pm.</p>
     ${g?.backtest ? `<p class="note">Tested ${esc(g.backtest.period)}: ${g.backtest.trades} trades, average ${esc(pct(g.backtest.avgPerTrade))} per trade after charges, ${whole(g.backtest.winRate)} won. Half the trades lose, so watch it before using money.</p>` : ''}
   </div>`;
-  if (!g || g.date !== todayIso) { el.innerHTML = intro + '<p class="empty">No check yet today. It runs at about 8:30 am (early watchlist) and 9:03 am (GO list) on market days.</p>'; return; }
+  if (!g || g.date < todayIso) { el.innerHTML = intro + '<p class="empty">No results yet for the next market day. Checks run every 30 minutes in the evening, then 8:30 am (watch list) and 9:03 am (GO list).</p>'; return; }
+  const label = g.date === todayIso ? 'Today' : new Date(g.date).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' });
   const go = g.candidates.filter((c) => c.status === 'go');
   el.innerHTML = `${intro}
-    <div class="day-head"><h2>Today<span>${go.length ? `${go.length} GO` : 'no GO'}</span></h2><span>${g.candidates.length} overnight result${g.candidates.length === 1 ? '' : 's'}</span></div>
+    <div class="day-head"><h2>${esc(label)}<span>${go.length ? `${go.length} GO` : 'no GO'}</span></h2><span>${g.candidates.length} overnight result${g.candidates.length === 1 ? '' : 's'}</span></div>
     ${g.candidates.map((c) => gapCard(c, g.rules, go.length)).join('') || '<p class="empty">No Nifty 500 results came out overnight.</p>'}
-    ${g.preOpenReady ? '' : '<p class="note">Pre-open prices were not ready when this ran.</p>'}`;
+    ${g.preOpenReady ? '' : g.date > todayIso ? `<p class="note">Results so far (updated ${esc(new Date(g.generated).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }))}). Opening prices come at 9:03 am.</p>` : '<p class="note">Pre-open prices were not ready when this ran.</p>'}`;
 }
 
 function showTab(name) {
