@@ -87,6 +87,14 @@ const notified = new Set(before?.notified ?? []);
 
 // Phone notification through ntfy.sh (free app, no account or phone number). Only when NTFY_TOPIC is set.
 const topic = process.env.NTFY_TOPIC;
+const HOLD = new Set((process.env.HOLD ?? '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean));
+// Your own stocks: one alert with the numbers as soon as the result is in, good or bad.
+const mineNew = rows.filter((r) => HOLD.has(r.symbol) && !notified.has(`mine:${r.symbol}`));
+if (topic && mineNew.length) {
+  const body = mineNew.map((r) => `${r.symbol}: ${r.qoq == null ? 'result filed, numbers not on Screener yet: open the PDF' : `profit vs last qtr ${pct(r.qoq)}, vs last year ${pct(r.yoy)}`}. Send me the numbers for hold or sell.`).join('\n');
+  const res = await fetch(`https://ntfy.sh/${topic}`, { method: 'POST', body, headers: { Title: `YOUR STOCK RESULT OUT: ${mineNew.map((r) => r.symbol).join(', ')}`, Priority: 'urgent', Tags: 'zap' } });
+  if (res.ok) mineNew.forEach((r) => notified.add(`mine:${r.symbol}`));
+}
 const fresh = rows.filter((r) => (r.status === 'go' || r.status === 'watch') && !notified.has(`${r.status}:${r.symbol}`));
 if (topic && fresh.length) {
   const go = fresh.filter((r) => r.status === 'go'), watch = fresh.filter((r) => r.status === 'watch');

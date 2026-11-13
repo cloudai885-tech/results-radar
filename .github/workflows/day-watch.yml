@@ -2,7 +2,7 @@ name: Live results watch (market hours)
 on:
   schedule:
     - cron: '40 3 * * 1-5'  # 9:10 am India time, runs until 12:30 pm
-    - cron: '50 6 * * 1-5'  # 12:20 pm India time, runs until 2:35 pm
+    - cron: '50 6 * * 1-5'  # 12:20 pm India time, runs until 3:35 pm (own stocks to the close)
   workflow_dispatch:
 
 concurrency:
@@ -31,7 +31,7 @@ jobs:
         if: steps.public.outputs.ok == 'yes'
         run: |
           now=$(TZ=Asia/Kolkata date +%H%M)
-          if [ "$now" -lt 1215 ]; then export STOP_AT=12:30; else export STOP_AT=14:35; fi
+          if [ "$now" -lt 1215 ]; then export STOP_AT=12:30; else export STOP_AT=15:35; fi
           node daywatch.mjs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
