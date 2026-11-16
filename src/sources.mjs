@@ -64,14 +64,33 @@ export async function fetchCached(url, { ttlHours, headers = {}, onStatus, timeo
 
 // ---- NSE ----------------------------------------------------------------
 let nseCookie = null;
+// A slow NSE page must not crash the job: failures here only mean the next request tries without a fresh cookie.
 async function nseRefreshCookie() {
-  const r = await gated('www.nseindia.com', () =>
-    fetch('https://www.nseindia.com/companies-listing/corporate-filings-event-calendar', {
-      headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' },
-      signal: AbortSignal.timeout(30000),
-    }));
-  await r.text();
-  nseCookie = r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  try {
+    const r = await gated('www.nseindia.com', () =>
+      fetch('https://www.nseindia.com/companies-listing/corporate-filings-event-calendar', {
+        headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', Accept: 'text/html' },
+        signal: AbortSignal.timeout(30000),
+      }));
+    await r.text();
+    nseCookie = r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+  } catch (e) {
+    console.warn(`  NSE cookie page did not answer (${e.message})`);
+  }
+}
+
+// When NSE does not answer at all, a scheduled job should stop calmly (the next run retries), not show a red failure.
+// Other errors (real bugs) still fail loudly.
+const NSE_DOWN = /nseindia.com/;
+for (const ev of ['uncaughtException', 'unhandledRejection']) {
+  process.on(ev, (e) => {
+    if (NSE_DOWN.test(String(e?.message ?? e)) && !process.env.STRICT) {
+      console.log(`::warning::NSE did not answer (${String(e?.message ?? e).slice(0, 200)}). Stopping; the next scheduled run will try again.`);
+      process.exit(0);
+    }
+    console.error(e);
+    process.exit(1);
+  });
 }
 
 export async function nseJson(apiPath, ttlHours, opts = {}) {

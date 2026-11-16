@@ -98,7 +98,10 @@ for (let tries = 0; tries < 8; tries++) {
   if (nowMins() >= 9 * 60 + 8) break;
   await sleep(15000);
 }
-if (![...pre.values()].some((p) => p.time.startsWith(nseDay))) { console.log('Pre-open prices for today not available (holiday?).'); process.exit(0); }
+if (![...pre.values()].some((p) => p.time.startsWith(nseDay))) {
+  await notify('Panic rebound: no pre-open prices', 'Could not read today\'s pre-open prices (market holiday, or the NSE website is not answering). No picks today.', 'low', 'warning');
+  process.exit(0);
+}
 }
 
 // ---- 3. find candidates ----
