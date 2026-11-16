@@ -9,6 +9,9 @@ on:
     - cron: '31 3 * * 1-5' # 9:01 am
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 concurrency:
   group: panic-rebound
   cancel-in-progress: false # later starts wait for the running one, then exit
@@ -27,3 +30,17 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      # Keep the pre-open book (buy/sell quantities at the auction) on its own branch for future research.
+      - name: Save the pre-open book to the preopen-data branch
+        if: always()
+        run: |
+          ls data/preopen/*.json >/dev/null 2>&1 || { echo "No pre-open book today"; exit 0; }
+          mkdir -p /tmp/book && cp data/preopen/*.json /tmp/book/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin preopen-data && git switch preopen-data || git switch --orphan preopen-data
+          git rm -rq --cached . 2>/dev/null || true
+          mkdir -p preopen && cp /tmp/book/*.json preopen/
+          git add -f preopen/*.json
+          git commit -m "Pre-open book $(date -u +%F)" || echo "No change"
+          git push origin preopen-data

@@ -141,6 +141,17 @@ export async function preOpen(ttlHours = 0.05) {
   return new Map((j?.data ?? []).map((r) => [r.metadata.symbol, { iep: r.metadata.iep, prevClose: r.metadata.previousClose, time: r.detail?.preOpenMarket?.lastUpdateTime ?? '' }]));
 }
 
+// The whole pre-open book for research: buy/sell quantities waiting at the auction, per stock (price ladder left out to keep it small).
+export async function preOpenSnapshot() {
+  const j = await nseJson('market-data-pre-open?key=ALL', 0, { attempts: 3 });
+  const out = {};
+  for (const r of j?.data ?? []) {
+    const { preopen, ...book } = r.detail?.preOpenMarket ?? {};
+    out[r.metadata.symbol] = { iep: r.metadata.iep, prevClose: r.metadata.previousClose, finalQuantity: r.metadata.finalQuantity, ...book };
+  }
+  return out;
+}
+
 export async function holidays() {
   const j = await nseJson('holiday-master?type=trading', 24 * 7);
   return new Set((j.CM ?? []).map((h) => isoFromNse(h.tradingDate)));

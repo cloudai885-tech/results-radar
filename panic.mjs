@@ -2,7 +2,8 @@
 // and opens 3-5% down again today, with no result or bad news overnight, tends to recover during the day.
 // Buy in pre-open at the opening price, +7% target, -3% stop, otherwise sell at 3:20 pm. Max 3 picks, most traded first.
 // Starts about 8:50 am, waits for pre-open prices (~9:04), alerts the phone, and first scores the previous picks.
-import { fetchCached, preOpen, announcements } from './src/sources.mjs';
+import fs from 'node:fs';
+import { fetchCached, preOpen, preOpenSnapshot, announcements } from './src/sources.mjs';
 import { categorise } from './research/categories.mjs';
 
 const RULE = { panicMarket: -0.012, highMinCr: 20, yFall: -0.03, gapMax: -0.03, gapMin: -0.05, minCr: 3, maxPicks: 3, stop: 0.03, target: 0.07, limitAbove: 0.005, capitalRs: 10000 };
@@ -164,4 +165,18 @@ if (high.length) {
   await notify(`Panic rebound (watch only): ${normal.length} pick${normal.length > 1 ? 's' : ''}`, body, 'default', 'white_circle');
 } else {
   await notify('Panic rebound: no picks today', `Market opening ${pct(marketGap)}. Nothing matched. No trade is a fine answer.`, 'min', 'zzz');
+}
+
+// ---- 4. save the pre-open book for future research (buy/sell quantities waiting at the auction) ----
+// One snapshot now (~9:05) and one after the auction closes (~9:08:45, final opening prices). The workflow pushes
+// data/preopen/ to the preopen-data branch. Never blocks the alert above.
+if (!SIM) {
+  try {
+    const earlyAt = new Date().toISOString(), early = await preOpenSnapshot();
+    while (nowMins() < 9 * 60 + 8 || (nowMins() === 9 * 60 + 8 && ist().getUTCSeconds() < 45)) await sleep(5000);
+    const finalAt = new Date().toISOString(), final = await preOpenSnapshot();
+    fs.mkdirSync('data/preopen', { recursive: true });
+    fs.writeFileSync(`data/preopen/${today}.json`, JSON.stringify({ early: { at: earlyAt, book: early }, final: { at: finalAt, book: final } }));
+    console.log(`Saved pre-open book: ${Object.keys(final).length} stocks.`);
+  } catch (e) { console.log(`Pre-open book not saved: ${e.message}`); }
 }
