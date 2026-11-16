@@ -1,0 +1,52 @@
+name: Research - bulk and block deals
+on:
+  schedule:
+    - cron: '30 14 * * 1-5' # 8:00 pm India time: save today's bulk and block deals (NSE archive files)
+  workflow_dispatch:
+    inputs:
+      history:
+        description: Also fetch the full history from 2024 (yes/no)
+        default: 'yes'
+
+permissions:
+  contents: write
+
+jobs:
+  deals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Download today's deal files
+        run: |
+          mkdir -p /tmp/deals
+          for f in bulk block; do
+            curl -sf -m 60 -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36" \
+              "https://nsearchives.nseindia.com/content/equities/$f.csv" -o "/tmp/deals/$f.csv" || echo "no $f file"
+          done
+          ls -la /tmp/deals
+      - name: Fetch deal history (only when started by hand with history = yes)
+        if: github.event_name == 'workflow_dispatch' && inputs.history == 'yes'
+        continue-on-error: true
+        run: node research/10-deals-download.mjs 2024-01-01 && cp data/research/deals.json /tmp/deals/history.json
+      - name: Save to the deals-data branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin deals-data && git switch deals-data || git switch --orphan deals-data
+          git rm -rq --cached . 2>/dev/null || true
+          mkdir -p daily
+          # name daily files by the date inside them, so re-runs do not duplicate
+          for f in bulk block; do
+            [ -s /tmp/deals/$f.csv ] || continue
+            d=$(sed -n 2p /tmp/deals/$f.csv | cut -d, -f1)
+            [ -n "$d" ] && cp /tmp/deals/$f.csv "daily/$d-$f.csv"
+          done
+          [ -s /tmp/deals/history.json ] && gzip -9 -c /tmp/deals/history.json > history.json.gz
+          git add -f daily/*.csv 2>/dev/null || true
+          [ -f history.json.gz ] && git add -f history.json.gz
+          git commit -m "Deals $(date -u +%F)" || echo "No change"
+          git push origin deals-data
