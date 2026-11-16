@@ -1,13 +1,17 @@
 name: Panic rebound (morning, watch only)
 on:
   schedule:
-    - cron: '20 3 * * 1-5' # 8:50 am India time; the job waits for pre-open prices (~9:04), GitHub timers often run late
-    - cron: '30 3 * * 1-5' # 9:00 am backup; does nothing if the first run already alerted
+    # GitHub often starts scheduled jobs late (or skips one), so there are 4 start times from 8:40 am India time.
+    # The first one to start waits for pre-open prices (~9:04) and alerts; the others see it already ran and stop.
+    - cron: '10 3 * * 1-5' # 8:40 am
+    - cron: '17 3 * * 1-5' # 8:47 am
+    - cron: '24 3 * * 1-5' # 8:54 am
+    - cron: '31 3 * * 1-5' # 9:01 am
   workflow_dispatch:
 
 concurrency:
   group: panic-rebound
-  cancel-in-progress: false
+  cancel-in-progress: false # later starts wait for the running one, then exit
 
 jobs:
   check:
