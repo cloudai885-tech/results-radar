@@ -16,7 +16,19 @@ const toMins = (hhmm) => { const [h, m] = hhmm.split(':').map(Number); return h 
 const today = ist().toISOString().slice(0, 10);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const closed = await holidays();
+// NSE sometimes stops answering for a few minutes. One failed call at startup used to end the whole session
+// (no alerts until the next day), so keep trying every minute until it answers or the session is over.
+async function untilReady(label, fn) {
+  for (;;) {
+    try { return await fn(); } catch (e) {
+      if (minsNow() >= toMins(STOP_AT)) { console.log(`${label}: still failing at ${STOP_AT}, stopping.`); process.exit(0); }
+      console.log(`${label} failed (${String(e?.message ?? e).slice(0, 150)}). Trying again in 1 minute.`);
+      await sleep(60000);
+    }
+  }
+}
+
+const closed = await untilReady('NSE holiday list', holidays);
 const wd = new Date(today).getUTCDay();
 if (wd === 0 || wd === 6 || closed.has(today)) { console.log('Market closed today.'); process.exit(0); }
 
@@ -26,7 +38,7 @@ const sb = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY ? { url:
 // Alerts already sent today (shared between the morning and afternoon jobs), kept in row id=2.
 let seen = new Set();
 if (sb) {
-  const r = await (await fetch(`${sb.url}?id=eq.2&select=payload`, { headers: { apikey: sb.key } })).json();
+  const r = await untilReady('Supabase', async () => (await fetch(`${sb.url}?id=eq.2&select=payload`, { headers: { apikey: sb.key }, signal: AbortSignal.timeout(30000) })).json());
   if (r?.[0]?.payload?.date === today) seen = new Set(r[0].payload.seen);
 }
 const saveSeen = async () => {
@@ -34,7 +46,7 @@ const saveSeen = async () => {
   await fetch(sb.url, { method: 'POST', headers: { apikey: sb.key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ id: 2, payload: { date: today, seen: [...seen] }, updated_at: new Date().toISOString() }) });
 };
 
-const universe = new Map((await nifty500()).map((c) => [c.symbol, c]));
+const universe = new Map((await untilReady('Nifty 500 list', nifty500)).map((c) => [c.symbol, c]));
 const T = targetQuarter(today);
 const crore = (v) => `Rs ${v.toLocaleString('en-IN', { maximumFractionDigits: 1 })} Cr`;
 
@@ -48,7 +60,9 @@ async function profitToBeat(symbol) {
   bar.set(symbol, v);
   return v;
 }
-const todays = (await eventCalendar()).filter((e) => e.date === today && universe.has(e.symbol)).map((e) => e.symbol);
+// Only a head start on the profit numbers (they also load when a result arrives), so a failure here must not stop the watch.
+const calendar = await eventCalendar().catch((e) => { console.log(`Event calendar failed (${e.message.slice(0, 150)}), loading profits as results arrive.`); return []; });
+const todays = calendar.filter((e) => e.date === today && universe.has(e.symbol)).map((e) => e.symbol);
 console.log(`${today}: ${todays.length} Nifty 500 results meetings today. Loading their past profits...`);
 for (const s of todays) await profitToBeat(s);
 
