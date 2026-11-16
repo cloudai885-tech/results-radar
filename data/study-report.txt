@@ -1,0 +1,176 @@
+
+=== Buy next-morning open, sell same day 3:20 pm (3% stop) ===
+Everything: train -0.25% win +39% | test -0.32% win +39%
+
+Single patterns (sorted by the weaker of train/test):
+20%+ below 52-week high                                                                         train n= 845  -0.07% win +40% | test n=1125  -0.14% win +42%
+Opens 3-5% up                                                                                   train n= 128  -0.18% win +38% | test n= 160  +0.04% win +41%
+FIIs selling                                                                                    train n= 560  -0.03% win +43% | test n= 976  -0.18% win +41%
+Industry mood bad (peers fell)                                                                  train n= 368  +0.02% win +42% | test n= 432  -0.18% win +42%
+Last qtr was a loss                                                                             train n=  59  -0.21% win +37% | test n= 112  -0.14% win +46%
+Loss this qtr                                                                                   train n=  59  -0.21% win +36% | test n=  99  +0.11% win +45%
+Profit down vs last qtr                                                                         train n= 628  -0.17% win +41% | test n= 989  -0.23% win +42%
+Fell on result day                                                                              train n= 344  -0.24% win +39% | test n= 403  -0.05% win +44%
+Margin up vs last qtr                                                                           train n= 635  -0.25% win +38% | test n=1072  -0.12% win +42%
+DIIs buying                                                                                     train n= 718  -0.01% win +42% | test n=1101  -0.28% win +40%
+Volume building (people waiting)                                                                train n= 143  -0.08% win +36% | test n= 258  -0.28% win +41%
+Fell before result                                                                              train n= 869  -0.25% win +40% | test n=1245  -0.29% win +40%
+Profit had fallen last qtr (recovery)                                                           train n= 638  +0.05% win +42% | test n=1004  -0.29% win +39%
+Industry mood good (peers rose)                                                                 train n= 400  -0.30% win +39% | test n= 660  -0.29% win +38%
+Market (Nifty) rising                                                                           train n= 619  -0.31% win +37% | test n=1363  -0.24% win +40%
+Ran up 10%+ before result                                                                       train n= 217  +0.12% win +40% | test n= 319  -0.31% win +39%
+Growth accelerating                                                                             train n= 519  -0.12% win +40% | test n=1129  -0.32% win +39%
+Profit leans on other income                                                                    train n= 389  +0.01% win +40% | test n= 518  -0.33% win +38%
+Revenue down vs last qtr                                                                        train n= 512  -0.06% win +42% | test n= 695  -0.34% win +40%
+Revenue up vs last qtr                                                                          train n=1028  -0.36% win +37% | test n=1735  -0.31% win +39%
+Rose on result day                                                                              train n= 300  -0.37% win +39% | test n= 474  -0.38% win +37%
+Revenue up vs last year                                                                         train n=1222  -0.38% win +37% | test n=2101  -0.35% win +39%
+Within 5% of 52-week high                                                                       train n= 119  -0.40% win +39% | test n= 316  -0.26% win +39%
+Profit up vs last qtr                                                                           train n= 854  -0.32% win +37% | test n=1331  -0.41% win +37%
+Opens down                                                                                      train n= 626  +0.03% win +44% | test n=1010  -0.43% win +39%
+Revenue up 15%+ vs last year                                                                    train n= 598  -0.43% win +36% | test n=1163  -0.39% win +38%
+Opens 0-3% up                                                                                   train n= 719  -0.47% win +35% | test n=1164  -0.35% win +38%
+Profit up both (qtr + year)                                                                     train n= 671  -0.52% win +35% | test n=1083  -0.48% win +35%
+Record profit (best in 2 yrs)                                                                   train n= 507  -0.54% win +35% | test n= 780  -0.40% win +35%
+Profit up vs last year                                                                          train n= 991  -0.57% win +35% | test n=1611  -0.52% win +35%
+FIIs buying                                                                                     train n= 502  -0.60% win +35% | test n= 652  -0.32% win +38%
+Revenue AND profit up both ways                                                                 train n= 534  -0.61% win +33% | test n= 925  -0.47% win +35%
+Margin up 2pts+ vs last year                                                                    train n= 466  -0.67% win +33% | test n= 824  -0.42% win +37%
+Opens 5-20% up                                                                                  train n=  68  -0.70% win +32% | test n=  97  +0.54% win +47%
+Profit up 25%+ vs last year                                                                     train n= 544  -0.77% win +31% | test n= 887  -0.56% win +34%
+
+Best combinations (profit in BOTH periods; 3549 tried, 175 positive in both):
+Revenue down vs last qtr + Industry mood bad (peers fell) + Fell on result day                  train n=  52  +0.79% win +52% | test n=  24  +0.78% win +58%
+Ran up 10%+ before result + 20%+ below 52-week high + Industry mood good (peers rose)           train n=  43  +0.68% win +47% | test n=  25  +0.88% win +52%
+Profit leans on other income + DIIs buying + Fell on result day                                 train n=  42  +1.42% win +55% | test n=  31  +0.62% win +52%
+Growth accelerating + Industry mood bad (peers fell) + Fell on result day                       train n=  42  +0.58% win +52% | test n=  28  +0.77% win +54%
+Profit leans on other income + DIIs buying + Industry mood bad (peers fell)                     train n=  40  +0.70% win +48% | test n=  44  +0.52% win +45%
+Profit up vs last qtr + FIIs selling + Fell on result day                                       train n=  52  +0.50% win +44% | test n=  74  +0.53% win +41%
+Fell before result + 20%+ below 52-week high + Volume building (people waiting)                 train n=  43  +0.62% win +44% | test n=  61  +0.50% win +56%
+Profit down vs last qtr + Profit had fallen last qtr (recovery) + Profit leans on other income  train n=  56  +0.52% win +45% | test n=  68  +0.48% win +47%
+20%+ below 52-week high + DIIs buying + Fell on result day                                      train n=  76  +0.46% win +46% | test n=  85  +0.48% win +47%
+Profit had fallen last qtr (recovery) + Profit leans on other income + DIIs buying              train n=  94  +0.49% win +49% | test n=  98  +0.45% win +48%
+Margin up vs last qtr + Industry mood bad (peers fell) + Fell on result day                     train n=  44  +0.81% win +43% | test n=  25  +0.42% win +48%
+Margin up vs last qtr + Ran up 10%+ before result + Industry mood good (peers rose)             train n=  44  +0.40% win +43% | test n=  32  +0.44% win +41%
+Profit had fallen last qtr (recovery) + DIIs buying + Industry mood bad (peers fell)            train n=  69  +0.69% win +51% | test n=  93  +0.38% win +51%
+Growth accelerating + 20%+ below 52-week high + Fell on result day                              train n=  55  +0.37% win +51% | test n=  68  +0.37% win +50%
+DIIs buying + Industry mood bad (peers fell) + Fell on result day                               train n=  50  +0.36% win +44% | test n=  40  +0.75% win +55%
+Profit up vs last qtr + Profit leans on other income + Industry mood bad (peers fell)           train n=  49  +0.35% win +41% | test n=  50  +0.44% win +48%
+Growth accelerating + FIIs buying + Industry mood bad (peers fell)                              train n=  41  +0.34% win +49% | test n=  42  +0.34% win +40%
+Profit had fallen last qtr (recovery) + Margin up vs last qtr + Industry mood bad (peers fell)  train n=  78  +0.74% win +51% | test n=  94  +0.33% win +51%
+FIIs selling + Industry mood bad (peers fell) + Fell on result day                              train n=  44  +0.31% win +43% | test n=  38  +0.59% win +50%
+Revenue down vs last qtr + Profit had fallen last qtr (recovery) + Industry mood bad (peers fell) train n=  56  +0.67% win +59% | test n=  47  +0.30% win +51%
+Margin up vs last qtr + Industry mood bad (peers fell) + Opens down                             train n=  49  +0.58% win +53% | test n=  56  +0.30% win +50%
+Profit down vs last qtr + Profit had fallen last qtr (recovery) + FIIs selling                  train n=  87  +0.75% win +53% | test n= 135  +0.29% win +51%
+Profit down vs last qtr + Profit leans on other income + DIIs buying                            train n=  78  +0.35% win +46% | test n=  89  +0.29% win +45%
+Profit leans on other income + 20%+ below 52-week high + Fell on result day                     train n=  56  +0.59% win +43% | test n=  38  +0.29% win +53%
+Margin up vs last qtr + DIIs buying + Fell on result day                                        train n=  49  +0.67% win +45% | test n=  71  +0.27% win +45%
+
+Worst combinations (avoid):
+Profit up vs last year + Margin up 2pts+ vs last year + Volume building (people waiting)        train n=  43  -1.16% win +21% | test n=  82  -1.02% win +32%
+Profit up vs last qtr + Profit up 25%+ vs last year + Volume building (people waiting)          train n=  41  -1.48% win +20% | test n=  80  -1.01% win +30%
+Profit up 25%+ vs last year + Profit up both (qtr + year) + Volume building (people waiting)    train n=  41  -1.48% win +20% | test n=  80  -1.01% win +30%
+Profit up 25%+ vs last year + Margin up vs last qtr + Opens down                                train n=  44  -1.23% win +30% | test n=  76  -0.98% win +34%
+Revenue up 15%+ vs last year + Record profit (best in 2 yrs) + Opens down                       train n=  48  -0.97% win +33% | test n=  85  -1.05% win +29%
+Revenue up vs last year + Margin up 2pts+ vs last year + Volume building (people waiting)       train n=  43  -0.99% win +23% | test n=  90  -0.96% win +32%
+Revenue up vs last qtr + Record profit (best in 2 yrs) + Opens down                             train n=  73  -0.92% win +32% | test n= 142  -1.00% win +30%
+Revenue up vs last qtr + Margin up 2pts+ vs last year + Opens down                              train n=  53  -0.91% win +34% | test n= 143  -0.99% win +31%
+Profit up 25%+ vs last year + Industry mood good (peers rose) + Opens 0-3% up                   train n=  71  -1.19% win +28% | test n= 132  -0.90% win +30%
+Profit up vs last year + Profit leans on other income + Opens down                              train n=  63  -0.89% win +27% | test n= 113  -1.24% win +27%
+
+=== Buy next-morning open, hold 3 sessions ===
+Everything: train -0.84% win +41% | test -0.33% win +46%
+
+Single patterns (sorted by the weaker of train/test):
+Opens 5-20% up                                                                                  train n=  68  +0.67% win +49% | test n=  97  +1.42% win +64%
+Loss this qtr                                                                                   train n=  59  +0.41% win +42% | test n=  99  +0.11% win +54%
+Opens 3-5% up                                                                                   train n= 128  -0.29% win +45% | test n= 160  -0.26% win +49%
+Industry mood bad (peers fell)                                                                  train n= 368  -0.29% win +46% | test n= 432  -0.03% win +50%
+Margin up vs last qtr                                                                           train n= 635  -0.35% win +42% | test n=1072  +0.03% win +49%
+Profit had fallen last qtr (recovery)                                                           train n= 638  -0.37% win +45% | test n=1004  -0.17% win +47%
+Growth accelerating                                                                             train n= 519  -0.40% win +41% | test n=1129  -0.28% win +47%
+20%+ below 52-week high                                                                         train n= 845  -0.47% win +44% | test n=1125  -0.10% win +47%
+FIIs selling                                                                                    train n= 560  -0.51% win +46% | test n= 976  -0.16% win +48%
+DIIs buying                                                                                     train n= 718  -0.52% win +45% | test n=1101  -0.32% win +47%
+Fell on result day                                                                              train n= 344  -0.56% win +43% | test n= 403  +0.07% win +50%
+Profit leans on other income                                                                    train n= 389  -0.70% win +41% | test n= 518  -0.34% win +47%
+Profit up vs last qtr                                                                           train n= 854  -0.72% win +41% | test n=1331  -0.39% win +45%
+Revenue up vs last qtr                                                                          train n=1028  -0.77% win +41% | test n=1735  -0.37% win +46%
+Ran up 10%+ before result                                                                       train n= 217  -0.11% win +44% | test n= 319  -0.86% win +41%
+Record profit (best in 2 yrs)                                                                   train n= 507  -0.87% win +40% | test n= 780  -0.60% win +44%
+Market (Nifty) rising                                                                           train n= 619  -0.90% win +38% | test n=1363  -0.27% win +46%
+Opens down                                                                                      train n= 626  -0.91% win +42% | test n=1010  -0.36% win +46%
+Fell before result                                                                              train n= 869  -0.93% win +41% | test n=1245  -0.03% win +48%
+Revenue up 15%+ vs last year                                                                    train n= 598  -0.93% win +40% | test n=1163  -0.19% win +48%
+Profit up both (qtr + year)                                                                     train n= 671  -0.97% win +39% | test n=1083  -0.50% win +44%
+Profit down vs last qtr                                                                         train n= 628  -0.98% win +40% | test n= 989  -0.28% win +47%
+Revenue up vs last year                                                                         train n=1222  -0.99% win +39% | test n=2101  -0.35% win +46%
+Revenue down vs last qtr                                                                        train n= 512  -1.02% win +41% | test n= 695  -0.23% win +47%
+Opens 0-3% up                                                                                   train n= 719  -1.03% win +38% | test n=1164  -0.45% win +44%
+Industry mood good (peers rose)                                                                 train n= 400  -1.04% win +40% | test n= 660  -0.32% win +46%
+Rose on result day                                                                              train n= 300  -1.09% win +38% | test n= 474  -0.53% win +46%
+Revenue AND profit up both ways                                                                 train n= 534  -1.10% win +38% | test n= 925  -0.50% win +44%
+Margin up 2pts+ vs last year                                                                    train n= 466  -1.10% win +37% | test n= 824  -0.40% win +46%
+Last qtr was a loss                                                                             train n=  59  -1.14% win +42% | test n= 112  -0.02% win +53%
+Profit up vs last year                                                                          train n= 991  -1.21% win +38% | test n=1611  -0.53% win +44%
+Volume building (people waiting)                                                                train n= 143  -1.22% win +34% | test n= 258  -0.24% win +48%
+FIIs buying                                                                                     train n= 502  -1.39% win +37% | test n= 652  -0.45% win +48%
+Profit up 25%+ vs last year                                                                     train n= 544  -1.42% win +36% | test n= 887  -0.54% win +44%
+Within 5% of 52-week high                                                                       train n= 119  -1.77% win +34% | test n= 316  -0.12% win +51%
+
+Best combinations (profit in BOTH periods; 3549 tried, 270 positive in both):
+Revenue up vs last year + Record profit (best in 2 yrs) + Opens 5-20% up                        train n=  43  +2.06% win +53% | test n=  54  +1.81% win +67%
+Margin up vs last qtr + Opens 5-20% up                                                          train n=  42  +1.80% win +50% | test n=  69  +2.15% win +65%
+Profit up vs last qtr + Record profit (best in 2 yrs) + Opens 5-20% up                          train n=  43  +2.13% win +56% | test n=  53  +1.72% win +66%
+Record profit (best in 2 yrs) + Opens 5-20% up                                                  train n=  45  +1.99% win +56% | test n=  55  +1.72% win +65%
+Revenue up vs last qtr + Record profit (best in 2 yrs) + Opens 5-20% up                         train n=  41  +2.43% win +56% | test n=  52  +1.68% win +65%
+Revenue up vs last qtr + Profit up vs last qtr + Opens 5-20% up                                 train n=  50  +1.36% win +50% | test n=  67  +1.42% win +64%
+Profit up both (qtr + year) + Record profit (best in 2 yrs) + Opens 5-20% up                    train n=  41  +2.12% win +56% | test n=  51  +1.32% win +65%
+Profit up vs last qtr + 20%+ below 52-week high + Fell on result day                            train n=  85  +1.24% win +52% | test n=  76  +1.80% win +57%
+Profit up vs last year + Record profit (best in 2 yrs) + Opens 5-20% up                         train n=  43  +1.97% win +56% | test n=  52  +1.20% win +63%
+Revenue up vs last year + Profit up both (qtr + year) + Opens 5-20% up                          train n=  48  +1.17% win +48% | test n=  68  +1.23% win +63%
+Profit up vs last qtr + Profit up vs last year + Opens 5-20% up                                 train n=  49  +1.14% win +49% | test n=  69  +1.16% win +62%
+Profit up vs last qtr + Profit up both (qtr + year) + Opens 5-20% up                            train n=  49  +1.14% win +49% | test n=  69  +1.16% win +62%
+Profit up vs last year + Profit up both (qtr + year) + Opens 5-20% up                           train n=  49  +1.14% win +49% | test n=  69  +1.16% win +62%
+Profit up both (qtr + year) + Opens 5-20% up                                                    train n=  49  +1.14% win +49% | test n=  69  +1.16% win +62%
+Growth accelerating + Industry mood bad (peers fell) + Opens down                               train n=  41  +1.12% win +51% | test n=  47  +1.59% win +60%
+Revenue up vs last qtr + Profit up both (qtr + year) + Opens 5-20% up                           train n=  46  +1.45% win +50% | test n=  63  +1.09% win +62%
+Revenue up vs last qtr + Revenue AND profit up both ways + Opens 5-20% up                       train n=  45  +1.49% win +49% | test n=  63  +1.09% win +62%
+Revenue up vs last year + Revenue AND profit up both ways + Opens 5-20% up                      train n=  45  +1.49% win +49% | test n=  63  +1.09% win +62%
+Profit up vs last qtr + Revenue AND profit up both ways + Opens 5-20% up                        train n=  45  +1.49% win +49% | test n=  63  +1.09% win +62%
+Profit up vs last year + Revenue AND profit up both ways + Opens 5-20% up                       train n=  45  +1.49% win +49% | test n=  63  +1.09% win +62%
+Profit up both (qtr + year) + Revenue AND profit up both ways + Opens 5-20% up                  train n=  45  +1.49% win +49% | test n=  63  +1.09% win +62%
+Revenue AND profit up both ways + Opens 5-20% up                                                train n=  45  +1.49% win +49% | test n=  63  +1.09% win +62%
+Profit up vs last qtr + Opens 5-20% up                                                          train n=  53  +1.08% win +49% | test n=  74  +1.52% win +65%
+Revenue up vs last year + Profit up vs last qtr + Opens 5-20% up                                train n=  51  +1.04% win +47% | test n=  72  +1.59% win +65%
+Revenue up vs last qtr + Revenue up 15%+ vs last year + Opens 5-20% up                          train n=  41  +0.98% win +46% | test n=  69  +2.04% win +68%
+
+Worst combinations (avoid):
+20%+ below 52-week high + FIIs buying + Rose on result day                                      train n=  51  -1.89% win +35% | test n=  48  -2.13% win +35%
+Record profit (best in 2 yrs) + FIIs buying + DIIs buying                                       train n=  58  -1.81% win +34% | test n=  56  -1.87% win +34%
+Revenue AND profit up both ways + Profit leans on other income + DIIs buying                    train n=  60  -1.84% win +38% | test n=  82  -1.70% win +34%
+FIIs buying + Rose on result day + Opens 0-3% up                                                train n=  44  -1.72% win +36% | test n=  77  -1.69% win +36%
+Profit had fallen last qtr (recovery) + Profit leans on other income + Record profit (best in 2 yrs) train n=  47  -1.78% win +36% | test n=  61  -1.66% win +33%
+Record profit (best in 2 yrs) + Market (Nifty) rising + Opens down                              train n=  40  -1.75% win +28% | test n=  97  -1.60% win +33%
+Profit up vs last year + Profit leans on other income + Rose on result day                      train n=  51  -1.60% win +35% | test n=  56  -2.19% win +29%
+Profit up both (qtr + year) + FIIs buying + Rose on result day                                  train n=  59  -1.57% win +36% | test n=  84  -1.58% win +40%
+Profit up 25%+ vs last year + Margin up vs last qtr + Opens down                                train n=  44  -2.66% win +30% | test n=  76  -1.55% win +37%
+Fell before result + FIIs buying + Rose on result day                                           train n=  62  -2.14% win +31% | test n=  80  -1.54% win +38%
+
+=== What the crowd liked (2-day move around the result, all periods) ===
+Rev qtr up, Rev yr up, Profit qtr up, Profit yr up           n=1459  avg  +1.47%  rose +59%
+Rev qtr up, Rev yr down, Profit qtr up, Profit yr up         n=  66  avg  +0.84%  rose +53%
+Rev qtr down, Rev yr up, Profit qtr up, Profit yr up         n= 161  avg  +0.82%  rose +60%
+Rev qtr down, Rev yr up, Profit qtr down, Profit yr up       n= 387  avg  -0.25%  rose +43%
+Rev qtr up, Rev yr up, Profit qtr down, Profit yr up         n= 378  avg  -0.27%  rose +46%
+Rev qtr up, Rev yr up, Profit qtr up, Profit yr down         n= 247  avg  -0.41%  rose +43%
+Rev qtr down, Rev yr up, Profit qtr up, Profit yr down       n=  24  avg  -0.43%  rose +38%
+Rev qtr down, Rev yr down, Profit qtr up, Profit yr up       n=  66  avg  -0.52%  rose +38%
+Rev qtr up, Rev yr down, Profit qtr up, Profit yr down       n=  87  avg  -1.03%  rose +34%
+Rev qtr down, Rev yr down, Profit qtr down, Profit yr up     n=  43  avg  -1.45%  rose +33%
+Rev qtr up, Rev yr up, Profit qtr down, Profit yr down       n= 278  avg  -1.62%  rose +39%
+Rev qtr up, Rev yr down, Profit qtr down, Profit yr down     n=  62  avg  -2.01%  rose +34%
+Rev qtr down, Rev yr up, Profit qtr down, Profit yr down     n= 213  avg  -2.43%  rose +29%
+Rev qtr down, Rev yr down, Profit qtr up, Profit yr down     n=  34  avg  -2.49%  rose +26%
+Rev qtr down, Rev yr down, Profit qtr down, Profit yr down   n= 190  avg  -3.06%  rose +28%
+Rev qtr up, Rev yr down, Profit qtr down, Profit yr up       n=   8  avg  -3.17%  rose +13%

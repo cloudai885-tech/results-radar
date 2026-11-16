@@ -32,7 +32,7 @@ function cachePath(url) {
   return path.join(CACHE_DIR, crypto.createHash('sha1').update(url).digest('hex') + '.cache');
 }
 
-async function fetchCached(url, { ttlHours, headers = {}, onStatus } = {}) {
+export async function fetchCached(url, { ttlHours, headers = {}, onStatus } = {}) {
   const file = cachePath(url);
   if (fs.existsSync(file) && (Date.now() - fs.statSync(file).mtimeMs) / 36e5 < ttlHours) {
     return fs.readFileSync(file, 'utf8');

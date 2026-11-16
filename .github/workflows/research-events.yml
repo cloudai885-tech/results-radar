@@ -1,0 +1,37 @@
+name: Research - announcement history
+on:
+  workflow_dispatch: # started by hand
+    inputs:
+      from:
+        description: First day (YYYY-MM-DD)
+        default: '2024-01-01'
+      to:
+        description: Last day (YYYY-MM-DD, empty = today)
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  events:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node research/2-events.mjs ${{ inputs.from }} ${{ inputs.to }}
+      # The file is big, so it goes to its own branch (main stays small), gzipped.
+      - name: Save to the research-data branch
+        run: |
+          gzip -9 -c data/research/events.json > /tmp/events.json.gz
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin research-data || true
+          git switch research-data 2>/dev/null || git switch --orphan research-data
+          git rm -rq --cached . 2>/dev/null || true
+          cp /tmp/events.json.gz events.json.gz
+          git add -f events.json.gz
+          git commit -m "Announcement history ${{ inputs.from }} to ${{ inputs.to }}" || echo "No change"
+          git push origin research-data

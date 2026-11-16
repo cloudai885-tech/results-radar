@@ -53,7 +53,7 @@ const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.fl
 const sb = process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY ? { url: `${process.env.SUPABASE_URL}/rest/v1/radar`, key: process.env.SUPABASE_SERVICE_KEY } : null;
 const current = sb ? await (await fetch(`${sb.url}?id=eq.1&select=payload`, { headers: { apikey: sb.key } })).json() : null;
 const before = current?.[0]?.payload?.gapgo?.date === today ? current[0].payload.gapgo : null;
-const known = new Map((before?.candidates ?? []).filter((c) => c.qoq != null && c.yoy != null).map((c) => [c.symbol, c]));
+const known = new Map((before?.candidates ?? []).filter((c) => c.qoq != null && c.yoy != null && c.qoq !== 1).map((c) => [c.symbol, c])); // qoq of exactly +100% can mean last quarter was a loss: re-check those
 
 const rows = (await mapPool([...overnight.keys()], 3, async (symbol) => {
   const t = overnight.get(symbol);
@@ -67,6 +67,7 @@ const rows = (await mapPool([...overnight.keys()], 3, async (symbol) => {
   const traded = bars?.length >= 20 ? median(bars.slice(-20).map((b) => b.close * b.volume)) : null;
   let status = 'skip', reason;
   if (pat(T) == null) reason = 'New quarter numbers not available yet';
+  else if (!old && !(pat(T - 1) > 0)) reason = 'Last quarter was a loss: profit vs a loss is not a real beat';
   else if (qoq <= 0 && yoy <= 0) reason = 'Profit fell vs last quarter and last year';
   else if (qoq <= 0) reason = `Did not beat last quarter (${pct(qoq)})`;
   else if (yoy <= 0) reason = `Did not beat last year (${pct(yoy)})`;
