@@ -10,7 +10,11 @@ const DIR = new URL('../data/research/', import.meta.url);
 const read = (f) => (fs.existsSync(new URL(f, DIR)) ? JSON.parse(fs.readFileSync(new URL(f, DIR), 'utf8')) : null);
 const { days, stocks } = read('market.json');
 const funda = read('fundamentals.json') ?? {};
-const events = read('events.json') ?? [];
+// Full announcement history if we have it; otherwise Nifty 500 result dates only (then "no news" is only known for those 500).
+const fullEvents = read('events.json');
+const events = fullEvents ?? read('events-results.json') ?? [];
+const newsKnownFor = fullEvents ? null : new Set(events.map((e) => e.symbol));
+const resultTimeKnown = !!fullEvents;
 const PERIODS = { train: ['2024-01-01', '2025-06-30'], valid: ['2025-07-01', '2026-03-31'], test: ['2026-04-01', '2099-12-31'] };
 const periodOf = (iso) => Object.keys(PERIODS).find((k) => iso >= PERIODS[k][0] && iso <= PERIODS[k][1]);
 const MIN_TURNOVER_CR = 2;
@@ -98,7 +102,8 @@ for (const [sym, arr] of Object.entries(series)) {
     const f = funda[sym];
     const r = {
       sym, day: days[i], di: i, period: periodOf(days[i]), gap, liq, cost,
-      cats: o ? [...o.cats] : [], noNews: !o, filedHour: o ? Number(o.time.slice(11, 13)) : null,
+      cats: o ? [...o.cats] : [], noNews: newsKnownFor && !newsKnownFor.has(sym) ? null : !o, filedHour: o && resultTimeKnown ? Number(o.time.slice(11, 13)) : null,
+      prevDay: hist[0].close / hist[1].close - 1, // the session before (results filed during market hours already moved it)
       sector: f?.sector ?? 'Unknown', mcap: f?.mcap ?? null, pe: f?.pe ?? null,
       runUp20, fromHigh: hist[0].close / high250 - 1, volBuild: vol50 ? vol5 / vol50 : null,
       deliv: hist[0].deliv, delivBuild: deliv50 ? deliv5 - deliv50 : null,
@@ -149,6 +154,8 @@ const add = (name, fn) => (C[name] = fn);
 for (const [lo, hi] of [[-1, -0.03], [-0.03, 0], [0, 0.02], [0.02, 0.05], [0.05, 0.1], [0.1, 0.2]]) add(`opens ${pct(lo, 0)}..${pct(hi, 0)}`, (r) => r.gap >= lo && r.gap < hi);
 for (const c of ['result', 'order', 'approval', 'buyback', 'bonus-split', 'dividend', 'acquisition', 'fundraise', 'rating', 'management', 'legal', 'meeting', 'other']) add(`news: ${c}`, (r) => r.cats.includes(c));
 add('no news', (r) => r.noNews);
+add('rose 3%+ the day before', (r) => r.prevDay >= 0.03);
+add('fell 3%+ the day before', (r) => r.prevDay <= -0.03);
 add('filed evening (15:30-20:00)', (r) => r.filedHour != null && r.filedHour >= 15 && r.filedHour < 20);
 add('filed late night/morning', (r) => r.filedHour != null && (r.filedHour >= 20 || r.filedHour < 9));
 add('profit up qtr+yr', (r) => r.hasNumbers ? r.patQ > 0 && r.patY > 0 && !r.lossLastQtr : null);
@@ -257,7 +264,13 @@ for (const key of Object.keys(chosen)) {
   const daily = [];
   const testDays = days.filter((d) => periodOf(d) === 'test').length;
   for (const [day, list] of byDay) {
-    const picks = list.sort((x, y) => y.conf - x.conf || y.hits - x.hits).slice(0, 5);
+    // Like a fund manager: best first, at most one stock per sector, at most 5.
+    const picks = [], sectors = new Set();
+    for (const p of list.sort((x, y) => y.conf - x.conf || y.hits - x.hits)) {
+      if (p.r.sector !== 'Unknown' && sectors.has(p.r.sector)) continue;
+      sectors.add(p.r.sector); picks.push(p);
+      if (picks.length === 5) break;
+    }
     daily.push({ day, n: picks.length, ret: mean(picks.map((p) => p.r[key])), names: picks.map((p) => p.r.sym) });
   }
   daily.sort((a, b) => (a.day < b.day ? -1 : 1));
