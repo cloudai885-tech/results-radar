@@ -1,51 +1,47 @@
-// Step 2: every NSE company announcement, day by day, with its exact filing time and a category.
-// The NSE website must answer (it blocks some networks for a while; GitHub Actions usually works).
+// Step 2: NSE announcement history, one company at a time (a whole day of all companies is too big for NSE to answer).
+// Companies come from research/symbols.txt (stocks trading Rs 2 cr+ a day). Runs on GitHub Actions; NSE blocks some home networks.
 // Output: data/research/events.json = [{ symbol, time: 'YYYY-MM-DD HH:MM', desc, text, cat }]
 import fs from 'node:fs';
-import { announcements } from '../src/sources.mjs';
+import { nseJson, mapPool } from '../src/sources.mjs';
+import { categorise } from './categories.mjs';
 
-const FROM = process.argv[2] ?? '2024-01-01';
-const TO = process.argv[3] ?? new Date(Date.now() + 19800e3).toISOString().slice(0, 10);
+const FROM = process.argv[2] || '2024-01-01';
+const TO = process.argv[3] || new Date(Date.now() + 19800e3).toISOString().slice(0, 10);
 const OUT = new URL('../data/research/events.json', import.meta.url);
 fs.mkdirSync(new URL('../data/research/', import.meta.url), { recursive: true });
-
-// Rough categories from the subject and the one-line summary. Order matters: first match wins.
-export const CATEGORIES = [
-  ['result', /financial result|integrated filing- financial|outcome of board meeting.*result|results? for the (quarter|period)/i],
-  ['order', /order|contract|award|letter of (award|intent)|\bLoA\b|\bLoI\b|bagged|secured|empanel/i],
-  ['approval', /usfda|us fda|\bEIR\b|approval from|anda|drug|patent|license|licence/i],
-  ['buyback', /buy ?back/i],
-  ['bonus-split', /bonus|split|sub-division/i],
-  ['dividend', /dividend/i],
-  ['acquisition', /acqui|merger|amalgamation|takeover|stake|joint venture|\bJV\b|strategic/i],
-  ['fundraise', /qip|preferential|rights issue|fund rais|warrants|ncd|debenture|allotment/i],
-  ['rating', /credit rating|rating/i],
-  ['management', /resign|appoint|cessation|director|ceo|cfo|managing/i],
-  ['legal', /penalty|litigation|search|raid|show cause|sebi order|income tax|gst|fraud|default|insolvency/i],
-  ['meeting', /analyst|investor meet|earnings call|conference call|press release|presentation/i],
-];
-export const categorise = (desc, text) => {
-  const s = `${desc} ${text}`;
-  for (const [c, re] of CATEGORIES) if (re.test(s)) return c;
-  return 'other';
-};
-
+const symbols = fs.readFileSync(new URL('./symbols.txt', import.meta.url), 'utf8').split(/\s+/).filter(Boolean);
+const nse = (iso) => iso.split('-').reverse().join('-');
 const MON = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
 const parseTime = (s) => { const m = /(\d+)-(\w{3})-(\d{4}) (\d+):(\d+)/.exec(s ?? ''); return m ? `${m[3]}-${MON[m[2]]}-${m[1].padStart(2, '0')} ${m[4].padStart(2, '0')}:${m[5]}` : null; };
 
-const all = [];
-for (let d = new Date(FROM + 'T00:00:00Z'); d <= new Date(TO + 'T00:00:00Z'); d = new Date(+d + 864e5)) {
-  const iso = d.toISOString().slice(0, 10);
-  const list = (await announcements(iso, iso, 1e7).catch(() => null)) ?? []; // cached forever: the past does not change
-  for (const a of list) {
-    const time = parseTime(a.an_dt);
-    if (!time || !a.symbol) continue;
-    const text = (a.attchmntText ?? '').slice(0, 300);
-    all.push({ symbol: a.symbol, time, desc: a.desc ?? '', text, cat: categorise(a.desc ?? '', text) });
-  }
-  if (d.getUTCDate() === 1) console.log(`  ${iso}: ${all.length} announcements so far`);
+// Year-long windows keep each answer small.
+const windows = [];
+for (let y = Number(FROM.slice(0, 4)); y <= Number(TO.slice(0, 4)); y++) {
+  const a = `${y}-01-01` < FROM ? FROM : `${y}-01-01`, b = `${y}-12-31` > TO ? TO : `${y}-12-31`;
+  windows.push([a, b]);
 }
+// Quick check first, so a blocked network fails in about a minute instead of hours.
+const probe = await nseJson(`corporate-announcements?index=equities&symbol=RELIANCE&from_date=01-10-2025&to_date=31-10-2025`, 0, { timeoutMs: 45000, attempts: 2 }).catch((e) => String(e));
+if (!Array.isArray(probe)) { console.error('NSE is not answering (test request failed):', probe); process.exit(1); }
+console.log(`NSE answers (test: ${probe.length} RELIANCE announcements in Oct 2025). Fetching ${symbols.length} companies...`);
+
+const all = [];
+let ok = 0, failed = 0;
+await mapPool(symbols, 1, async (symbol, i) => {
+  for (const [a, b] of windows) {
+    const list = await nseJson(`corporate-announcements?index=equities&symbol=${encodeURIComponent(symbol)}&from_date=${nse(a)}&to_date=${nse(b)}`, 1e7, { timeoutMs: 90000, attempts: 3 }).catch(() => null);
+    if (!Array.isArray(list)) { failed++; continue; }
+    ok++;
+    for (const x of list) {
+      const time = parseTime(x.an_dt);
+      if (!time) continue;
+      const text = (x.attchmntText ?? '').slice(0, 300);
+      all.push({ symbol, time, desc: x.desc ?? '', text, cat: categorise(x.desc ?? '', text) });
+    }
+  }
+  if (ok === 0 && failed >= 15) { console.error('NSE is not answering at all. Stopping early.'); process.exit(1); }
+}, (done, total) => { if (done % 50 === 0) console.log(`  ${done}/${total} companies, ${all.length} announcements, ${failed} failed requests`); });
 fs.writeFileSync(OUT, JSON.stringify(all));
 const counts = {};
 for (const e of all) counts[e.cat] = (counts[e.cat] ?? 0) + 1;
-console.log(`Saved ${all.length} announcements.`, counts);
+console.log(`Saved ${all.length} announcements (${failed} failed requests).`, counts);

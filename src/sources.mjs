@@ -32,17 +32,17 @@ function cachePath(url) {
   return path.join(CACHE_DIR, crypto.createHash('sha1').update(url).digest('hex') + '.cache');
 }
 
-export async function fetchCached(url, { ttlHours, headers = {}, onStatus } = {}) {
+export async function fetchCached(url, { ttlHours, headers = {}, onStatus, timeoutMs = 30000, attempts = 6 } = {}) {
   const file = cachePath(url);
   if (fs.existsSync(file) && (Date.now() - fs.statSync(file).mtimeMs) / 36e5 < ttlHours) {
     return fs.readFileSync(file, 'utf8');
   }
   const host = new URL(url).host;
   let lastError;
-  for (let attempt = 1; attempt <= 6; attempt++) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     const res = await gated(host, async () => {
       try {
-        const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', ...headers }, signal: AbortSignal.timeout(30000) });
+        const r = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', ...headers }, signal: AbortSignal.timeout(timeoutMs) });
         return { status: r.status, body: await r.text(), retryAfter: Number(r.headers.get('retry-after')) || 0 };
       } catch (e) {
         return { status: 0, body: String(e) };
@@ -74,14 +74,14 @@ async function nseRefreshCookie() {
   nseCookie = r.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
 }
 
-export async function nseJson(apiPath, ttlHours) {
+export async function nseJson(apiPath, ttlHours, opts = {}) {
   const url = 'https://www.nseindia.com/api/' + apiPath;
   const cached = cachePath(url);
   const fresh = fs.existsSync(cached) && (Date.now() - fs.statSync(cached).mtimeMs) / 36e5 < ttlHours;
   if (!nseCookie && !fresh) await nseRefreshCookie();
   // Headers are read per attempt through the getter so a refreshed cookie is used on retry.
   const headers = { Accept: 'application/json', Referer: 'https://www.nseindia.com/companies-listing/corporate-filings-event-calendar', get Cookie() { return nseCookie ?? ''; } };
-  const body = await fetchCached(url, { ttlHours, headers, onStatus: (s) => (s === 0 || s === 401 || s === 403 ? nseRefreshCookie().catch(() => {}) : undefined) });
+  const body = await fetchCached(url, { ttlHours, headers, ...opts, onStatus: (s) => (s === 0 || s === 401 || s === 403 ? nseRefreshCookie().catch(() => {}) : undefined) });
   return body ? JSON.parse(body) : null;
 }
 
