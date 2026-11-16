@@ -5,7 +5,7 @@
 import { fetchCached, preOpen, announcements } from './src/sources.mjs';
 import { categorise } from './research/categories.mjs';
 
-const RULE = { yFall: -0.03, gapMax: -0.03, gapMin: -0.05, minCr: 3, maxPicks: 3, stop: 0.03, target: 0.07, limitAbove: 0.005, capitalRs: 10000 };
+const RULE = { panicMarket: -0.012, highMinCr: 20, yFall: -0.03, gapMax: -0.03, gapMin: -0.05, minCr: 3, maxPicks: 3, stop: 0.03, target: 0.07, limitAbove: 0.005, capitalRs: 10000 };
 const BAD_NEWS = new Set(['result', 'legal', 'rating', 'fundraise']);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ist = () => new Date(Date.now() + 19800e3);
@@ -62,14 +62,14 @@ if (state.today && state.today.date < today && !state.today.scored) {
     for (const p of state.today.picks) {
       const t = day.data.get(p.symbol);
       if (!t) continue;
-      const stop = t.open * (1 - RULE.stop), tgt = t.open * (1 + RULE.target);
+      const stop = t.open * (1 - RULE.stop), tgt = p.tier === 'high' ? Infinity : t.open * (1 + RULE.target); // high tier: no target, hold to 3:20 pm
       const ret = t.low <= stop ? -RULE.stop : t.high >= tgt ? RULE.target : t.close / t.open - 1;
       Object.assign(p, { open: t.open, high: t.high, low: t.low, close: t.close, result: ret, howEnded: t.low <= stop ? 'stop' : t.high >= tgt ? 'target' : '3:20 pm' });
-      lines.push(`${p.symbol}: opened ${t.open}, ${p.howEnded} -> ${pct(ret)} (pre-open showed ${p.iep})`);
+      lines.push(`${p.tier === 'high' ? 'HIGH ' : ''}${p.symbol}: opened ${t.open}, ${p.howEnded} -> ${pct(ret)} (pre-open showed ${p.iep})`);
     }
     state.today.scored = true;
     const done = state.today.picks.filter((p) => p.result != null);
-    state.history.push({ date: state.today.date, picks: done.map(({ symbol, iep, open, result, howEnded }) => ({ symbol, iep, open, result, howEnded })), day: done.length ? done.reduce((s, p) => s + p.result, 0) / done.length : null });
+    state.history.push({ date: state.today.date, picks: done.map(({ symbol, tier, iep, open, result, howEnded }) => ({ symbol, tier, iep, open, result, howEnded })), day: done.length ? done.reduce((s, p) => s + p.result, 0) / done.length : null });
     const all = state.history.flatMap((h) => h.picks);
     const avg = all.length ? all.reduce((s, p) => s + p.result, 0) / all.length : 0;
     if (lines.length) await notify(`Panic rebound: ${state.today.date} scorecard`, `${lines.join('\n')}\nBasket ${pct(state.history.at(-1).day)} before costs. So far: ${all.length} picks, avg ${pct(avg)}, ${all.filter((p) => p.result > 0).length} won.`, 'low', 'clipboard');
@@ -102,16 +102,24 @@ if (![...pre.values()].some((p) => p.time.startsWith(nseDay))) { console.log('Pr
 }
 
 // ---- 3. find candidates ----
+// Market mood: the typical liquid stock's opening move. -1.2% or worse = market panic morning (the high-confidence tier).
+const liqOf = new Map();
+for (const symbol of yday.data.keys()) liqOf.set(symbol, median(sessions.slice(0, 20).map((s) => s.data.get(symbol)?.cr ?? 0)));
+const gaps = [];
+for (const [symbol, y] of yday.data) { const p = pre.get(symbol); if (p?.iep && y.close && liqOf.get(symbol) >= 2) gaps.push(p.iep / y.close - 1); }
+const marketGap = median(gaps);
+const panicMorning = gaps.length > 200 && marketGap <= RULE.panicMarket;
+console.log(`Market opening ${pct(marketGap)} (${gaps.length} stocks). ${panicMorning ? 'PANIC MORNING' : 'normal morning'}`);
+
 const candidates = [];
 for (const [symbol, y] of yday.data) {
   const p = pre.get(symbol);
   if (!p?.iep || !y.prev) continue;
-  const yRet = y.close / y.prev - 1, gap = p.iep / y.close - 1;
-  if (yRet > RULE.yFall || gap > RULE.gapMax || gap <= RULE.gapMin + 0.0005) continue; // -5% is often the lower circuit: tested negative
-  if (p.iep > RULE.capitalRs / RULE.maxPicks) continue; // one share must fit the per-stock budget
-  const liq = median(sessions.slice(0, 20).map((s) => s.data.get(symbol)?.cr ?? 0));
-  if (liq < RULE.minCr) continue;
-  candidates.push({ symbol, yRet, gap, iep: p.iep, liq });
+  const yRet = y.close / y.prev - 1, gap = p.iep / y.close - 1, liq = liqOf.get(symbol);
+  if (gap > RULE.gapMax || gap <= RULE.gapMin + 0.0005) continue; // -5% is often the lower circuit: tested negative
+  // HIGH: panic morning + big, heavily traded stock (tested 13 of 13 days won). NORMAL: fell 3%+ yesterday too (watch only).
+  const tier = panicMorning && liq >= RULE.highMinCr ? 'high' : yRet <= RULE.yFall && liq >= RULE.minCr && p.iep <= RULE.capitalRs / RULE.maxPicks ? 'normal' : null;
+  if (tier) candidates.push({ symbol, tier, yRet, gap, iep: p.iep, liq });
 }
 // overnight news check: anything filed after yesterday's close
 let news = new Map(), newsChecked = !SIM;
@@ -122,20 +130,31 @@ if (!SIM) try {
     (news.get(a.symbol) ?? news.set(a.symbol, []).get(a.symbol)).push(cat);
   }
 } catch { newsChecked = false; }
-const picks = candidates
-  .filter((c) => !(news.get(c.symbol) ?? []).some((cat) => BAD_NEWS.has(cat)))
+const round = (v) => Math.round(v * 20) / 20;
+const choose = (tier) => candidates
+  .filter((c) => c.tier === tier && !(news.get(c.symbol) ?? []).some((cat) => BAD_NEWS.has(cat)))
   .sort((a, b) => b.liq - a.liq)
   .slice(0, RULE.maxPicks)
-  .map((c) => ({ ...c, limit: Math.round(c.iep * (1 + RULE.limitAbove) * 20) / 20, stopPrice: Math.round(c.iep * (1 - RULE.stop) * 20) / 20, targetPrice: Math.round(c.iep * (1 + RULE.target) * 20) / 20, otherNews: news.get(c.symbol) ?? [] }));
-console.log(`${candidates.length} candidates, ${picks.length} picks. News ${newsChecked ? 'checked' : 'NOT checked'}.`);
+  .map((c) => ({ ...c, limit: round(c.iep * (1 + RULE.limitAbove)), stopPrice: round(c.iep * (1 - RULE.stop)), targetPrice: tier === 'high' ? null : round(c.iep * (1 + RULE.target)), otherNews: news.get(c.symbol) ?? [] }));
+const high = choose('high'), normal = high.length ? [] : choose('normal');
+const picks = [...high, ...normal];
+console.log(`${candidates.length} candidates, ${high.length} high, ${normal.length} normal. News ${newsChecked ? 'checked' : 'NOT checked'}.`);
 
-state.today = { date: today, picks, candidates: candidates.length, newsChecked, generated: new Date().toISOString() };
+state.today = { date: today, picks, marketGap, panicMorning, candidates: candidates.length, newsChecked, generated: new Date().toISOString() };
 await save();
-if (picks.length) {
-  const per = RULE.capitalRs / picks.length;
-  const body = picks.map((p) => `${p.symbol}: yesterday ${pct(p.yRet)}, opening ${pct(p.gap)}. Pre-open BUY limit Rs ${p.limit} (qty ${Math.floor(per / p.iep)}). Stop Rs ${p.stopPrice}, target Rs ${p.targetPrice}, else sell 3:20 pm.`).join('\n')
-    + `\nWATCH ONLY. Check for bad news yourself.${newsChecked ? '' : ' (Overnight news could NOT be checked today.)'}`;
-  await notify(`Panic rebound: ${picks.length} pick${picks.length > 1 ? 's' : ''} (pre-open closes 9:07)`, body, 'high', 'rotating_light');
+const per = RULE.capitalRs / Math.max(picks.length, 1);
+const qty = (p) => (Math.floor(per / p.iep) > 0 ? `qty ${Math.floor(per / p.iep)}` : `1 share = Rs ${p.iep}, above your Rs ${Math.round(per)} per stock`);
+const newsNote = newsChecked ? '' : ' (Overnight news could NOT be checked today.)';
+const NL = String.fromCharCode(10);
+if (high.length) {
+  const body = [`Whole market opening ${pct(marketGap)}: panic morning. Past record: 13 of 13 such days won.`,
+    ...high.map((p) => `${p.symbol}: opening ${pct(p.gap)}. Pre-open BUY limit Rs ${p.limit} (${qty(p)}). Stop Rs ${p.stopPrice}, sell at 3:20 pm.`),
+    `Check for bad news first.${newsNote}`].join(NL);
+  await notify(`HIGH CONFIDENCE: market panic, ${high.length} pick${high.length > 1 ? 's' : ''} (pre-open closes 9:07)`, body, 'urgent', 'green_circle');
+} else if (normal.length) {
+  const body = [...normal.map((p) => `${p.symbol}: yesterday ${pct(p.yRet)}, opening ${pct(p.gap)}. Pre-open BUY limit Rs ${p.limit} (${qty(p)}). Stop Rs ${p.stopPrice}, target Rs ${p.targetPrice}, else sell 3:20 pm.`),
+    `NORMAL level: WATCH ONLY, no money.${newsNote}`].join(NL);
+  await notify(`Panic rebound (watch only): ${normal.length} pick${normal.length > 1 ? 's' : ''}`, body, 'default', 'white_circle');
 } else {
-  await notify('Panic rebound: no picks today', `${candidates.length} stocks matched the price rule, none passed the checks. No trade is a fine answer.`, 'min', 'zzz');
+  await notify('Panic rebound: no picks today', `Market opening ${pct(marketGap)}. Nothing matched. No trade is a fine answer.`, 'min', 'zzz');
 }
