@@ -124,7 +124,7 @@ for (const [symbol, y] of yday.data) {
   if (!p?.iep || !y.prev) continue;
   const yRet = y.close / y.prev - 1, gap = p.iep / y.close - 1, liq = liqOf.get(symbol);
   if (gap > RULE.gapMax || gap <= RULE.gapMin + 0.0005) continue; // -5% is often the lower circuit: tested negative
-  // HIGH: panic morning + big, heavily traded stock (tested 13 of 13 days won). NORMAL: fell 3%+ yesterday too (watch only).
+  // HIGH: panic morning + big, heavily traded stock (tested on clean data: 10 of 10 days won, Jan 2025 - Nov 2026). NORMAL: fell 3%+ yesterday too (watch only).
   const tier = panicMorning && liq >= RULE.highMinCr ? 'high' : yRet <= RULE.yFall && liq >= RULE.minCr && p.iep <= RULE.capitalRs / RULE.maxPicks ? 'normal' : null;
   if (tier) candidates.push({ symbol, tier, yRet, gap, iep: p.iep, liq });
 }
@@ -154,7 +154,7 @@ const qty = (p) => (Math.floor(per / p.iep) > 0 ? `qty ${Math.floor(per / p.iep)
 const newsNote = newsChecked ? '' : ' (Overnight news could NOT be checked today.)';
 const NL = String.fromCharCode(10);
 if (high.length) {
-  const body = [`Whole market opening ${pct(marketGap)}: panic morning. Past record: 13 of 13 such days won.`,
+  const body = [`Whole market opening ${pct(marketGap)}: panic morning. Past record: 10 of 10 such days won (small sample).`,
     ...high.map((p) => `${p.symbol}: opening ${pct(p.gap)}. Pre-open BUY limit Rs ${p.limit} (${qty(p)}). Stop Rs ${p.stopPrice}, sell at 3:20 pm.`),
     `Check for bad news first.${newsNote}`].join(NL);
   await notify(`HIGH CONFIDENCE: market panic, ${high.length} pick${high.length > 1 ? 's' : ''} (pre-open closes 9:07)`, body, 'urgent', 'green_circle');
