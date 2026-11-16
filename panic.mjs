@@ -22,6 +22,10 @@ async function bhav(iso) {
   const csv = await fetchCached(`https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_${d}${m}${y}.csv`, { ttlHours: 1e7, attempts: 2 }).catch(() => null);
   if (!csv?.startsWith('SYMBOL')) return null;
   const lines = csv.trim().split(/\r?\n/), head = lines[0].split(',').map((x) => x.trim()), c = (n) => head.indexOf(n);
+  // On holidays NSE serves another day's file: use it only if the date inside matches.
+  const MON = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+  const [fd, fm, fy] = (lines[1]?.split(',')[c('DATE1')] ?? '').trim().split('-');
+  if (`${fy}-${MON[fm]}-${fd}` !== iso) return null;
   const map = new Map();
   for (const line of lines.slice(1)) {
     const p = line.split(',').map((x) => x.trim());

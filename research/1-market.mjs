@@ -8,6 +8,7 @@ const TO = process.argv[3] ?? new Date(Date.now() + 19800e3 - 864e5).toISOString
 const OUT_DIR = new URL('../data/research/', import.meta.url);
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
+const MON = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
 const days = [];
 const stocks = {};
 const num = (s) => { const v = Number(String(s).trim()); return Number.isFinite(v) ? v : null; };
@@ -25,6 +26,9 @@ for (; d <= end; d = new Date(+d + 864e5)) {
   const lines = csv.trim().split(/\r?\n/);
   const head = lines[0].split(',').map((x) => x.trim());
   const c = (n) => head.indexOf(n);
+  // On holidays NSE serves another day's file: keep it only if the date inside matches.
+  const [fd, fm, fy] = (lines[1]?.split(',')[c('DATE1')] ?? '').trim().split('-');
+  if (`${fy}-${MON[fm]}-${fd}` !== iso) { console.log(`  ${iso}: file is for ${fy}-${MON[fm]}-${fd}, skipped (holiday)`); continue; }
   const idx = days.push(iso) - 1;
   for (const line of lines.slice(1)) {
     const p = line.split(',').map((x) => x.trim());
