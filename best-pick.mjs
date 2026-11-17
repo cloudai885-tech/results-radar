@@ -15,7 +15,7 @@ import { fetchCached, preOpen, announcements, holidays } from './src/sources.mjs
 import { categorise } from './research/categories.mjs';
 import { publishNews } from './src/app-publish.mjs';
 
-const RULE = { cost: 0.004, limitAbove: 0.005, marketPanic: -0.012, panicMinCr: 20, panicGap: [-0.05, -0.03], gapGo: [0.05, 0.2], newsGap: [0.05, 0.15], maxPicks: 3, keepWithin: 10 };
+const RULE = { cost: 0.004, limitAbove: 0.005, marketPanic: -0.012, panicMinCr: 20, panicGap: [-0.05, -0.03], gapGo: [0.05, 0.2], newsGap: [0.05, 0.15], maxPicks: 3 };
 const BAD_NEWS = new Set(['result', 'legal', 'rating', 'fundraise']);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ist = () => new Date(Date.now() + 19800e3);
@@ -146,7 +146,10 @@ for (const w of np?.watch ?? []) {
 // ---- 4. choose: best first, one per stock, only the top level of the day ----
 const seen = new Set();
 const ranked = cands.sort((a, b) => b.score - a.score).filter((c) => !seen.has(c.symbol) && seen.add(c.symbol));
-const picks = ranked.filter((c) => c.score >= (ranked[0]?.score ?? 0) - RULE.keepWithin).slice(0, RULE.maxPicks);
+// Very strong = Panic rebound HIGH or Gap & Go (score 85+). If any very strong stock exists, send only those (up to 3,
+// panic first, then Gap & Go). Only when there is none do strong-news stocks go out (up to 3, most traded first).
+const veryStrong = ranked.some((c) => c.score >= 85);
+const picks = ranked.filter((c) => !veryStrong || c.score >= 85).slice(0, RULE.maxPicks);
 log(`market ${pct(marketGap)}, ${cands.length} candidates: ${ranked.map((c) => `${c.symbol}(${c.kind} ${c.score.toFixed(0)})`).join(', ') || 'none'}`);
 
 const sellText = (p) => p.exit === 'trail' ? `when it falls 1.5% from its best (you get SELL NOW), or at ₹${p.stopPrice}` : `${p.targetPrice ? `UP at ₹${p.targetPrice} or ` : ''}DOWN at ₹${p.stopPrice}, else at 3:20 pm`;
