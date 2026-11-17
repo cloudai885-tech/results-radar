@@ -3,9 +3,10 @@
 //   node research/18-open-pull.mjs
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { fetchCached } from '../src/sources.mjs';
 
-const G = new URL('../data/research/grades/', import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1');
+const G = fileURLToPath(new URL('../data/research/grades/', import.meta.url));
 const DAYS = ['2026-11-11', '2026-11-12', '2026-11-13', '2026-11-16', '2026-11-17'];
 const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : NaN);
 const pct = (v, d = 1) => (Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%` : '-');

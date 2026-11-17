@@ -1,0 +1,31 @@
+name: Live news radar (BUY NOW / SELL NOW, paper test)
+on:
+  schedule:
+    # One run lasts up to ~5h50 (GitHub's limit is 6h), so a 2nd run takes over in the afternoon.
+    # Extra start times because GitHub timers run late; a run that finds another one going waits, then continues the day.
+    - cron: '35 3 * * 1-5'  # 9:05 am India time
+    - cron: '50 3 * * 1-5'  # 9:20 am (backup)
+    - cron: '10 9 * * 1-5'  # 2:40 pm (takes over from the morning run)
+    - cron: '30 9 * * 1-5'  # 3:00 pm (backup)
+  workflow_dispatch:
+
+concurrency:
+  group: live-radar
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node live-radar.mjs
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
