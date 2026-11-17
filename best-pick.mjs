@@ -23,7 +23,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 
-const RULE = { cost: 0.004, limitAbove: 0.005, marketPanic: -0.012, panicMinCr: 20, panicGap: [-0.05, -0.03], gapGo: [0.05, 0.2], newsGap: [0.05, 0.15], maxPicks: 3 };
+const RULE = { cost: 0.004, limitAbove: 0.03, marketPanic: -0.012, panicMinCr: 20, panicGap: [-0.05, -0.03], gapGo: [0.05, 0.2], newsGap: [0.05, 0.15], maxPicks: 3 };
 const BAD_NEWS = new Set(['result', 'legal', 'rating', 'fundraise']);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ist = () => new Date(Date.now() + 19800e3);
@@ -215,7 +215,7 @@ const avoidNote = avoided.length ? `\n\nClaude removed: ${avoided.map(([s, v]) =
 if (out.length) {
   await notify(`BUY TODAY: ${out.map((p) => p.symbol).join(', ')} (before 9:07)`,
     out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   Claude check: ${p.check}\n   BUY: limit ₹${p.limit} in pre-open NOW${p.level === 1 ? ' (HALF your usual money; only in pre-open, never after 9:15)' : ''}\n   SELL ${p.sell}`).join('\n\n') +
-    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. If it opens above your limit, you are not filled - do not chase. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
+    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. Limit is up to 3% above the pre-open price, so you rarely miss. Paid more than the pre-open price? Set your stop 3% below YOUR buy price. Not bought by 9:15? Cancel the order - never buy later. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
 } else if (TEST && ranked.length + [...pre.keys()].length) {
   const sample = [...pre.entries()].filter(([s]) => (cr.get(s) ?? 0) >= 20).map(([s, q]) => ({ symbol: s, kind: 'test', why: `opened ${pct(q.iep / q.prevClose - 1)} today`, g: q.iep / q.prevClose - 1 })).sort((a, b) => b.g - a.g)[0];
   const v = sample ? await claudeCheck(sample) : null;
