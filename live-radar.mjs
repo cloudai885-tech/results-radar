@@ -71,7 +71,7 @@ if (!TEST && hhmmNow() >= 1525) { console.log('Market is closing; nothing to do.
 const state = await load();
 if (state.date !== today) {
   if (state.date && state.trades?.length) (state.history ??= []).push({ date: state.date, trades: state.trades.map(({ symbol, ret, delay }) => ({ symbol, ret, delay })) });
-  Object.assign(state, { date: today, seen: [], trades: [], badNews: [], pdfs: 0, graded: 0 });
+  Object.assign(state, { date: today, seen: [], trades: [], badNews: [], pdfs: 0, graded: 0, bestLoaded: false, bestHeld: [] });
 }
 const seen = new Set(state.seen);
 
@@ -217,6 +217,32 @@ while (hhmmNow() < endAt) {
     if (b.last <= t.px * (1 - RULE.stop)) await sell(t, b.last, 'stop loss');
     else if (b.last <= t.peak * (1 - RULE.trail)) await sell(t, b.last, `push stopped: ${RULE.trail * 100}% off its best Rs ${t.peak.toFixed(2)}`);
     else if (hhmmNow() >= RULE.closeAll) await sell(t, b.last, 'end of day');
+  }
+  // 4. today's 9:05 buys (best-pick.mjs): once the market opens, follow them and send SELL NOW by their own rule
+  if (!state.bestLoaded && hhmmNow() >= 916) {
+    const best = (await fetch(`${process.env.SUPABASE_URL}/rest/v1/radar?id=eq.1&select=payload`, { headers: { apikey: process.env.SUPABASE_SERVICE_KEY ?? '' } }).then((r) => r.json()).catch(() => null))?.[0]?.payload?.news?.best;
+    state.bestLoaded = true;
+    state.bestHeld = [];
+    for (const p of best?.date === today ? best.picks ?? [] : []) {
+      const b = await bars1(p.symbol);
+      const o = b?.bars.find((k) => k.hhmm === 915)?.o;
+      if (!o || o > p.limit) continue; // opened above the limit: not bought
+      state.bestHeld.push({ symbol: p.symbol, kind: p.kind, exit: p.exit, stop: p.stop, target: p.target, px: o, peak: o });
+    }
+    log(`Following today's 9:05 buys: ${state.bestHeld.map((h) => h.symbol).join(', ') || 'none filled'}`);
+    await save();
+  }
+  for (const h of (state.bestHeld ?? []).filter((x) => x.done == null)) {
+    const b = await bars1(h.symbol);
+    if (!b?.last) continue;
+    h.peak = Math.max(h.peak, b.last, ...b.bars.map((k) => k.h));
+    const stopPx = h.exit === 'trail' ? Math.max(h.px * (1 - h.stop), h.peak * (1 - RULE.trail)) : h.px * (1 - h.stop);
+    const how = b.last <= stopPx ? (h.exit === 'trail' && stopPx > h.px * (1 - h.stop) ? `push stopped: ${RULE.trail * 100}% off its best ₹${h.peak.toFixed(2)}` : 'stop loss hit')
+      : h.target && b.last >= h.px * (1 + h.target) ? `target +${h.target * 100}% reached` : hhmmNow() >= RULE.closeAll ? 'end of day - never hold overnight' : null;
+    if (!how) continue;
+    h.done = b.last;
+    await notify(`SELL NOW ${h.symbol} (${how})`, `Today's buy ${h.symbol} (${h.kind}): opened ₹${h.px.toFixed(2)}, now ₹${b.last.toFixed(2)} -> ${pct(b.last / h.px - 1 - 0.004)} after costs.`, 'urgent', 'rotating_light');
+    await save();
   }
   state.seen = [...seen];
   if (fresh.length) await save();

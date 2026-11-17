@@ -252,10 +252,9 @@ function renderNews() {
     `fell ${pct(x.yRet ?? 0)} yesterday`, `<b class="neg">${esc(pct(x.gap))}</b><span>opening</span>`, x.result != null ? pct(x.result) : x.tier === 'high' ? 'HIGH' : 'Watch',
     `<ol class="simple"><li><b>Limit buy ₹${esc(x.limit)}</b><span>in pre-open, before 9:07 am</span></li><li><b>Sell DOWN at ₹${esc(x.stopPrice)}</b><span>-3% stop</span></li>${x.targetPrice ? `<li><b>Sell UP at ₹${esc(x.targetPrice)}</b><span>+7% target</span></li>` : ''}<li><b>Neither? Sell at 3:20 pm</b><span>never hold overnight</span></li></ol>${x.howEnded ? `<p class="note">Ended: ${esc(x.howEnded)}</p>` : ''}`)).join('');
   // 6. scorecard over all paper trades
-  const all = [...(n.picks?.history ?? []).flatMap((h) => h.buys.map((b) => ({ d: h.date, symbol: b.symbol, result: b.result, kind: 'morning' }))),
-    ...(n.live?.history ?? []).flatMap((h) => h.trades.filter((t) => t.ret != null).map((t) => ({ d: h.date, symbol: t.symbol, result: t.ret, kind: 'live' }))),
-    ...(l?.trades ?? []).filter((t) => t.ret != null).map((t) => ({ d: today, symbol: t.symbol, result: t.ret, kind: 'live' })),
-    ...(n.panic?.history ?? []).flatMap((h) => h.picks.map((x) => ({ d: h.date, symbol: x.symbol, result: x.result - 0.004, kind: 'panic' })))].sort((x, y) => x.d.localeCompare(y.d));
+  const all = [...(n.best?.history ?? []).flatMap((h) => h.picks.map((x) => ({ d: h.date, symbol: x.symbol, result: x.result, kind: x.kind }))),
+    ...(n.live?.history ?? []).flatMap((h) => h.trades.filter((t) => t.ret != null).map((t) => ({ d: h.date, symbol: t.symbol, result: t.ret, kind: 'live news' }))),
+    ...(l?.trades ?? []).filter((t) => t.ret != null).map((t) => ({ d: today, symbol: t.symbol, result: t.ret, kind: 'live news' }))].sort((x, y) => x.d.localeCompare(y.d));
   const won = all.filter((x) => x.result > 0).length, avg = all.length ? all.reduce((s, x) => s + x.result, 0) / all.length : 0;
   const score = all.length ? `<div class="track" style="margin-top:0"><div class="stats"><div class="stat"><b>${all.length}</b><span>trades</span></div><div class="stat"><b>${Math.round((won / all.length) * 100)}%</b><span>won</span></div><div class="stat">${plain(avg)}<span>avg per trade</span></div></div>
     ${all.slice(-12).reverse().map((x) => `<div class="track-row"><span>${esc(x.d.slice(5))} · <b>${esc(x.symbol)}</b> <span style="color:var(--muted)">${x.kind}</span></span>${plain(x.result)}</div>`).join('')}
@@ -264,8 +263,8 @@ function renderNews() {
   // ---- TODAY'S BUY: the one list to act on (morning picks at ~9:05 + live BUY NOW), max 3 a day ----
   const f = n.final?.date === today ? n.final : null;
   const LEVEL = { 3: ['Very strong', 'r-excellent'], 2: ['Strong', 'r-good'], 1: ['Medium · small money', 'r-max'] };
-  const buys = [...(f?.picks ?? []).map((x, i) => newsCard(LEVEL[x.level][1], `${i + 1}. ${x.symbol}`, x.why, `<b>₹${esc(x.limit)}</b><span>buy limit</span>`, LEVEL[x.level][0],
-      `<ol class="simple"><li><b>BUY: limit ₹${esc(x.limit)}</b><span>in pre-open, before 9:07 am. Opens above it? Not filled - do not chase.</span></li><li><b>SELL: ${esc(x.sell)}</b><span>${esc(x.kind)} · intraday only, never hold overnight</span></li></ol>`)),
+  const buys = [...(f?.picks ?? []).map((x, i) => newsCard((LEVEL[x.level] ?? LEVEL[2])[1], `${i + 1}. ${x.symbol}`, x.why, `<b>₹${esc(x.limit)}</b><span>buy limit</span>`, (LEVEL[x.level] ?? LEVEL[2])[0],
+      `<ol class="simple"><li><b>BUY: limit ₹${esc(x.limit)}</b><span>in pre-open, before 9:07 am. Opens above it? Not filled - do not chase.</span></li><li><b>SELL ${esc(x.sell)}</b><span>${esc(x.kind)} · intraday only, never hold overnight</span></li></ol>`)),
     ...(l?.trades ?? []).map((t) => { const sold = t.ret != null; return newsCard(sold ? (t.ret >= 0 ? 'r-excellent' : 'r-bad') : 'r-good', `${t.symbol} · live`, t.why,
       sold ? `${plain(t.ret)}<span>result</span>` : `<b>₹${esc(t.px.toFixed(1))}</b><span>bought ${esc(t.at)}</span>`, sold ? 'Sold' : 'Holding',
       `<ol class="simple"><li><b>BUY at ${esc(t.at)} · ₹${esc(t.px.toFixed(2))}</b><span>news at ${esc(t.newsAt?.slice(0, 5))}, strength ${esc(t.strength)}/10</span></li>${sold ? `<li><b>Sold at ${esc(t.exitAt)} · ₹${esc(t.exit.toFixed(2))}</b><span>${esc(t.how)} · ${esc(pct(t.ret))} after charges</span></li>` : '<li><b>SELL when it falls 1.5% from its best</b><span>SELL NOW comes on the phone</span></li>'}</ol>`); })].join('');

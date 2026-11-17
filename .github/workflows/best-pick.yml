@@ -1,0 +1,28 @@
+name: TODAY'S BUY (9:05 am, best 1-3 stocks from all strategies)
+on:
+  schedule:
+    # Starts early because GitHub timers run late; the job waits inside until 9:04:40 for pre-open prices.
+    - cron: '10 3 * * 1-5' # 8:40 am India time
+    - cron: '20 3 * * 1-5' # 8:50 am
+    - cron: '28 3 * * 1-5' # 8:58 am
+  workflow_dispatch:
+
+concurrency:
+  group: best-pick
+  cancel-in-progress: false # a later start waits, sees today's message was sent, and stops
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node best-pick.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
