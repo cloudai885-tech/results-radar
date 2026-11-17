@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { fetchCached, announcements, holidays, mapPool } from './src/sources.mjs';
 import { typeOf } from './research/news-types.mjs';
+import { publishNews } from './src/app-publish.mjs';
 
 const RULE = {
   minCr: 5, // stock must trade Rs 5 cr+ a day (else we cannot get in and out)
@@ -50,7 +51,11 @@ async function load(id = 5) {
   if (id !== 5) return {};
   return fs.existsSync(LOCAL) ? JSON.parse(fs.readFileSync(LOCAL, 'utf8')) : {};
 }
+let lastPublic = '';
 async function save() {
+  const pub = { date: state.date, trades: state.trades.map(({ symbol, px, at, newsAt, delay, why, strength, exit, ret, how, exitAt }) => ({ symbol, px, at, newsAt, delay, why, strength, exit, ret, how, exitAt })), badNews: state.badNews ?? [], graded: state.graded, history: (state.history ?? []).slice(-30) };
+  const js = JSON.stringify({ ...pub, graded: 0 });
+  if (js !== lastPublic) { lastPublic = js; await publishNews('live', pub); }
   if (!sb) { fs.mkdirSync(new URL('./data/', import.meta.url), { recursive: true }); fs.writeFileSync(LOCAL, JSON.stringify(state, null, 1)); return; }
   const res = await fetch(sb.url, { method: 'POST', headers: { apikey: sb.key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ id: 5, payload: state, updated_at: new Date().toISOString() }) });
   if (!res.ok) console.warn(`Supabase save failed: ${res.status}`);
@@ -66,7 +71,7 @@ if (!TEST && hhmmNow() >= 1525) { console.log('Market is closing; nothing to do.
 const state = await load();
 if (state.date !== today) {
   if (state.date && state.trades?.length) (state.history ??= []).push({ date: state.date, trades: state.trades.map(({ symbol, ret, delay }) => ({ symbol, ret, delay })) });
-  Object.assign(state, { date: today, seen: [], trades: [], pdfs: 0, graded: 0 });
+  Object.assign(state, { date: today, seen: [], trades: [], badNews: [], pdfs: 0, graded: 0 });
 }
 const seen = new Set(state.seen);
 
@@ -175,6 +180,7 @@ while (hhmmNow() < endAt) {
     log(`  ${w.x.symbol} [${w.type}] grade ${g.grade} str ${g.strength}: ${g.why}`);
     // bad news on a stock we hold -> get out
     if (g.grade === -1 && w.held) {
+      (state.badNews ??= []).push({ symbol: w.x.symbol, why: g.why, at: w.st.t.slice(0, 5) });
       const t = open().find((t) => t.symbol === w.x.symbol);
       const b = await bars1(w.x.symbol);
       if (t && b?.last) await sell(t, b.last, 'BAD NEWS');

@@ -21,14 +21,16 @@
         </div>
       </div>
       <div class="tabs" role="tablist">
-        <button type="button" id="tab-results" role="tab" aria-selected="true">Results</button>
+        <button type="button" id="tab-news" role="tab" aria-selected="true">News</button>
+        <button type="button" id="tab-results" role="tab" aria-selected="false">Results</button>
         <button type="button" id="tab-gap" role="tab" aria-selected="false">Gap &amp; Go</button>
         <button type="button" id="tab-ipo" role="tab" aria-selected="false">IPOs</button>
       </div>
     </div>
   </header>
   <main>
-    <div id="view-results" class="layout">
+    <div id="view-news" class="ipo-page"></div>
+    <div id="view-results" class="layout" hidden>
       <aside id="side"></aside>
       <section class="list">
         <nav id="filters" class="filters" aria-label="Filter by rating"></nav>

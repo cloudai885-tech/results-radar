@@ -205,6 +205,66 @@ function gapCard(c, rules, goCount) {
   </details>`;
 }
 
+
+// ---------------- News tab: today's news alerts in plain sections ----------------
+const istToday = () => new Date(Date.now() + 19800e3).toISOString().slice(0, 10);
+const plain = (v) => (v == null ? '' : `<b class="${v >= 0 ? 'pos' : 'neg'}">${esc(pct(v))}</b>`);
+function section(icon, title, explain, body, emptyText) {
+  return `<div class="day-head"><h2>${icon} ${esc(title)}</h2></div><p class="note" style="margin:-4px 2px 8px">${esc(explain)}</p>${body || `<p class="empty small">${esc(emptyText)}</p>`}`;
+}
+function newsCard(cls, symbol, sub, right, badge, detail) {
+  return `<details class="card ${cls}"><summary><div class="name"><b>${esc(symbol)}</b><span>${esc(sub)}</span></div>${right ? `<div class="gmp">${right}</div>` : ''}${badge ? `<span class="badge">${esc(badge)}</span>` : ''}${CHEVRON}</summary><div class="detail">${detail}</div></details>`;
+}
+const row = (sym, text, bad) => `<div class="track-row"><b class="${bad ? 'neg' : ''}">${esc(sym)}</b><span class="row-why">${esc(text)}</span></div>`;
+const box = (rows) => (rows ? `<div class="track" style="margin-top:0">${rows}</div>` : '');
+function renderNews() {
+  const el = document.getElementById('view-news');
+  const n = data.news ?? {}, today = istToday();
+  const p = n.picks?.date === today ? n.picks : null, l = n.live?.date === today ? n.live : null;
+  const intro = `<div class="hero r-excellent"><small>News trades · paper test</small>
+    <p style="margin:6px 0 0">Good news → <b>buy fast</b> → <b>sell when the push stops</b> (it falls 1.5-2% from its best). Never hold overnight.
+    Your phone (ntfy) gets every alert first; this page is to check later.</p></div>`;
+  // 1. live BUY NOW
+  const live = (l?.trades ?? []).map((t) => {
+    const sold = t.ret != null;
+    return newsCard(sold ? (t.ret >= 0 ? 'r-excellent' : 'r-bad') : 'r-good', t.symbol, t.why,
+      sold ? `${plain(t.ret)}<span>result</span>` : `<b>₹${esc(t.px.toFixed(1))}</b><span>bought</span>`, sold ? 'Sold' : 'Holding',
+      `<ol class="simple"><li><b>News at ${esc(t.newsAt?.slice(0, 5))}</b><span>strength ${esc(t.strength)}/10 · alert ${esc(t.delay)} seconds later</span></li>
+       <li><b>Buy at ${esc(t.at)} · ₹${esc(t.px.toFixed(2))}</b><span>paper trade</span></li>
+       ${sold ? `<li><b>Sold at ${esc(t.exitAt)} · ₹${esc(t.exit.toFixed(2))}</b><span>${esc(t.how)} · ${esc(pct(t.ret))} after charges</span></li>` : '<li><b>Still holding</b><span>SELL NOW comes on the phone when it falls 1.5% from its best</span></li>'}</ol>`);
+  }).join('');
+  // 2. buy at open
+  const open = (p?.openBuys ?? []).map((b) => newsCard(b.result == null ? 'r-good' : b.result >= 0 ? 'r-excellent' : 'r-bad', b.symbol, b.why,
+    `<b class="pos">${esc(pct(b.gap))}</b><span>pre-open</span>`, b.result == null ? 'At open' : pct(b.result),
+    `<ol class="simple"><li><b>Limit buy ₹${esc(b.limit)}</b><span>before 9:08 am. If it opens above this you are not filled - do not chase.</span></li><li><b>Sell when it falls 1.5% from its best</b><span>never hold past 3:20 pm</span></li></ol>`)).join('');
+  // 3. 9:30 buys
+  const at930 = (p?.buys ?? []).map((b) => newsCard('r-good', b.symbol, b.why, `<b>₹${esc(b.buy.toFixed(1))}</b><span>at 9:30</span>`, '9:30 buy',
+    `<ol class="simple"><li><b>Bought ~₹${esc(b.buy.toFixed(2))} at 9:30</b><span>it was above its open and yesterday's close</span></li><li><b>Sell at +3%, or when it falls 2% from its best</b><span>never hold past 3:20 pm</span></li></ol>`)).join('');
+  // 4. good news, watch only
+  const bought = new Set([...(p?.openBuys ?? []), ...(p?.buys ?? [])].map((b) => b.symbol));
+  const good = (p?.watch ?? []).filter((w) => !bought.has(w.symbol)).map((w) => row(w.symbol, w.why)).join('');
+  // 5. bad news
+  const liveBad = new Set((l?.badNews ?? []).map((b) => b.symbol));
+  const bad = [...(l?.badNews ?? []).map((b) => row(b.symbol, `${b.at} · ${b.why}`, true)), ...(p?.bad ?? []).filter((s) => !liveBad.has(s)).map((s) => row(s, 'overnight bad news', true))].join('');
+  // 6. scorecard over all paper trades
+  const all = [...(n.picks?.history ?? []).flatMap((h) => h.buys.map((b) => ({ d: h.date, symbol: b.symbol, result: b.result, kind: 'morning' }))),
+    ...(n.live?.history ?? []).flatMap((h) => h.trades.filter((t) => t.ret != null).map((t) => ({ d: h.date, symbol: t.symbol, result: t.ret, kind: 'live' }))),
+    ...(l?.trades ?? []).filter((t) => t.ret != null).map((t) => ({ d: today, symbol: t.symbol, result: t.ret, kind: 'live' }))];
+  const won = all.filter((x) => x.result > 0).length, avg = all.length ? all.reduce((s, x) => s + x.result, 0) / all.length : 0;
+  const score = all.length ? `<div class="track" style="margin-top:0"><div class="stats"><div class="stat"><b>${all.length}</b><span>trades</span></div><div class="stat"><b>${Math.round((won / all.length) * 100)}%</b><span>won</span></div><div class="stat">${plain(avg)}<span>avg per trade</span></div></div>
+    ${all.slice(-12).reverse().map((x) => `<div class="track-row"><span>${esc(x.d.slice(5))} · <b>${esc(x.symbol)}</b> <span style="color:var(--muted)">${x.kind}</span></span>${plain(x.result)}</div>`).join('')}
+    <p class="note">After charges. Use real money only if this stays green for a few weeks.</p></div>` : '';
+  const when = n.updated ? new Date(n.updated).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : null;
+  el.innerHTML = intro +
+    section('🚀', 'Buy now (live)', 'Strong news came out during the day. Alert sent within seconds.', live, 'No BUY NOW yet today. Strong news does not come every day.') +
+    section('🌅', 'Buy at open', 'Strong overnight news, and buyers rushing in before 9:08 am (pre-open +5% or more).', open, p?.preopenDone ? 'None today: no strong-news stock opened +5% or more.' : 'Comes at 9:04-9:08 am.') +
+    section('✅', 'Buy at 9:30', "Strong overnight news, still above its open and yesterday's close at 9:30.", at930, p?.confirmed ? 'None today: none of them held up at 9:30.' : 'Comes at 9:31 am.') +
+    section('👀', 'Good news - just watch', 'Good news, but no buy signal. Do not buy these on your own.', box(good), p ? 'No strong good news overnight.' : 'The morning list comes at 7:50-8:25 am.') +
+    section('⛔', 'Bad news - avoid or sell', 'If you hold one of these, think about selling.', box(bad), 'No bad news found.') +
+    section('📊', 'Scorecard', 'How every paper trade turned out.', score, 'No finished trades yet. Results show after the first trading day.') +
+    (when ? `<p class="note" style="text-align:center">News updated ${esc(when)}${p?.mode === 'keyword' ? ' · rough keyword reading (no Claude key)' : ''}</p>` : '');
+}
+
 function renderGapGo() {
   const el = document.getElementById('view-gap');
   const g = data.gapgo;
@@ -223,12 +283,12 @@ function renderGapGo() {
 }
 
 function showTab(name) {
-  for (const t of ['results', 'gap', 'ipo']) {
+  for (const t of ['news', 'results', 'gap', 'ipo']) {
     document.getElementById(`view-${t}`).hidden = name !== t;
     document.getElementById(`tab-${t}`).setAttribute('aria-selected', String(name === t));
   }
 }
-for (const t of ['results', 'gap', 'ipo']) document.getElementById(`tab-${t}`).addEventListener('click', () => showTab(t));
+for (const t of ['news', 'results', 'gap', 'ipo']) document.getElementById(`tab-${t}`).addEventListener('click', () => showTab(t));
 
 // Reads from Supabase once config.js is filled in, otherwise from the local data.json.
 async function fetchData() {
@@ -262,6 +322,7 @@ async function load() {
   renderDays();
   renderIpos();
   renderGapGo();
+  renderNews();
 }
 
 load();

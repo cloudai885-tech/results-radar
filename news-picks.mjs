@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import { fetchCached, announcements, holidays, preOpen } from './src/sources.mjs';
 import { typeOf } from './research/news-types.mjs';
+import { publishNews } from './src/app-publish.mjs';
 
 const MODE = process.argv[2] ?? 'morning';
 const RULE = { minCr: 5, maxBuys: 3, trail: 0.02, target: 0.03, stop: 0.02, maxGap: 0.05, openGapMin: 0.05, openGapMax: 0.15, openTrail: 0.015, limitAbove: 0.005 };
@@ -44,6 +45,9 @@ async function save(state) {
   if (!sb) { fs.mkdirSync(new URL('./data/', import.meta.url), { recursive: true }); fs.writeFileSync(LOCAL, JSON.stringify(state, null, 1)); return; }
   const res = await fetch(sb.url, { method: 'POST', headers: { apikey: sb.key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ id: 4, payload: state, updated_at: new Date().toISOString() }) });
   if (!res.ok) throw new Error(`Supabase save failed: ${res.status} ${await res.text()}`);
+  // the app's News tab: today's lists + the last 30 days of results
+  const t = state.today ?? {};
+  await publishNews('picks', { date: t.date, mode: t.mode, watch: (t.watch ?? []).map(({ symbol, why }) => ({ symbol, why })), bad: t.bad ?? [], openBuys: t.openBuys ?? [], buys: t.buys ?? [], preopenDone: !!t.preopenDone, confirmed: !!t.confirmed, history: (state.history ?? []).slice(-30) });
 }
 
 // ---- trading calendar ----
