@@ -60,7 +60,8 @@ async function save() {
 const hol = await holidays().catch(() => new Set());
 const isTradingDay = (iso) => { const d = new Date(iso + 'T00:00:00Z').getUTCDay(); return d !== 0 && d !== 6 && !hol.has(iso); };
 if (!isTradingDay(today)) { console.log(`${today} is not a trading day.`); process.exit(0); }
-if (hhmmNow() >= 1525) { console.log('Market is closing; nothing to do.'); process.exit(0); }
+const TEST = process.argv[2] === 'test'; // read today's last real filings with Claude and send the grades to the phone; no trades saved
+if (!TEST && hhmmNow() >= 1525) { console.log('Market is closing; nothing to do.'); process.exit(0); }
 
 const state = await load();
 if (state.date !== today) {
@@ -136,6 +137,16 @@ async function sell(t, px, how) {
   t.exit = px; t.ret = px / t.px - 1 - 0.004; t.how = how; t.exitAt = ist().toISOString().slice(11, 16);
   await notify(`SELL NOW ${t.symbol} (${how})`, `${t.symbol} ~Rs ${px.toFixed(2)}. Bought ~Rs ${t.px.toFixed(2)} at ${t.at} -> ${pct(t.ret)} after costs.`, 'urgent', 'rotating_light');
   await save();
+}
+
+if (TEST) {
+  const items = (await announcements(today, today, 0).catch(() => [])).filter((x) => liquid.has(x.symbol) && !['routine', 'meeting', 'board-meet', 'management'].includes(typeOf(x.desc ?? '', x.attchmntText ?? ''))).slice(0, 6);
+  const got = await mapPool(items, 6, async (x) => ({ x, g: await grade(x, (x.attchmntText || '').replace(/\s+/g, ' ').slice(0, 600), typeOf(x.desc ?? '', x.attchmntText ?? '')) }));
+  const ok = !!client && got.some((r) => r.g && !r.g.why.startsWith('('));
+  await notify(`TEST: ${ok ? 'Claude is reading the news' : 'Claude NOT working'} (${got.length} filings, ${state.pdfs} PDFs)`,
+    got.map(({ x, g }) => `${x.symbol} ${x.an_dt.slice(12, 17)}: grade ${g.grade}, strength ${g.strength} - ${g.why}`).join('\n') +
+    (ok ? '\n\nAll good. Real BUY NOW alerts come only for strength 8+ news, within 3 minutes of the filing.' : client ? '\n\nThe key is set but Claude did not answer - check the key and credits.' : '\n\nNo ANTHROPIC_API_KEY found in GitHub secrets.'), 'default', 'white_check_mark');
+  process.exit(0);
 }
 
 const endAt = Math.min(1525, (() => { const n = ist(); const m = n.getUTCHours() * 60 + n.getUTCMinutes() + 345; return Math.floor(m / 60) * 100 + (m % 60); })());

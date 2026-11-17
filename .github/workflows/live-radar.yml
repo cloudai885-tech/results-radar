@@ -8,9 +8,14 @@ on:
     - cron: '10 9 * * 1-5'  # 2:40 pm (takes over from the morning run)
     - cron: '30 9 * * 1-5'  # 3:00 pm (backup)
   workflow_dispatch:
+    inputs:
+      test:
+        description: "Test only: Claude reads today's last filings and sends the grades to the phone"
+        type: boolean
+        default: true
 
 concurrency:
-  group: live-radar
+  group: live-radar-${{ github.event_name }} # a manual test never waits behind the all-day run
   cancel-in-progress: false
 
 jobs:
@@ -23,7 +28,7 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
-      - run: node live-radar.mjs
+      - run: node live-radar.mjs ${{ github.event.inputs.test == 'true' && 'test' || '' }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
