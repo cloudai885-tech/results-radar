@@ -1,4 +1,4 @@
-// TODAY'S BUY: one message at about 9:04-9:05 am with the best 1-3 stocks of the day, from every tested strategy.
+// TODAY'S BUY: one message at about 9:02 am with the best 1-3 stocks of the day, from every tested strategy.
 // The user wants one clear answer, not many lists. Ranked by how well each strategy held up in testing:
 //   1. Panic rebound, HIGH level: whole market opens -1.2% or worse, a big stock (Rs 20 cr+/day) opens -3..-5%,
 //      no bad news overnight. 10 of 10 such days won (Jan 2025 - Nov 2026, small sample). Hold to 3:20 pm, stop -3%.
@@ -9,11 +9,16 @@
 // Only the top level of the day is sent: if one strategy is clearly stronger, only its stocks go out (often just 1).
 // Nothing strong -> "NO BUY TODAY". The month's tests showed forced trades on other days lose about 0.4% each.
 //
-//   node best-pick.mjs           starts any time before 9:04, waits for pre-open prices, sends the message.
+//   node best-pick.mjs           start it early (GitHub timers can run an hour late); it waits, decides at 9:02:00,
+//                                Claude checks each pick for red flags (seconds), sends, then sends CANCEL until 9:06
+//                                if a pick's pre-open price leaves its range.
 // Also scores yesterday's picks first (5-minute candles) and keeps the record for the app (row 1, news.best).
 import { fetchCached, preOpen, announcements, holidays } from './src/sources.mjs';
 import { categorise } from './research/categories.mjs';
 import { publishNews } from './src/app-publish.mjs';
+import Anthropic from '@anthropic-ai/sdk';
+import { z } from 'zod';
+import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 
 const RULE = { cost: 0.004, limitAbove: 0.005, marketPanic: -0.012, panicMinCr: 20, panicGap: [-0.05, -0.03], gapGo: [0.05, 0.2], newsGap: [0.05, 0.15], maxPicks: 3 };
 const BAD_NEWS = new Set(['result', 'legal', 'rating', 'fundraise']);
@@ -27,9 +32,13 @@ const round = (v) => Math.round(v * 20) / 20;
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)] ?? 0; };
 const log = (...a) => console.log(ist().toISOString().slice(11, 19), ...a);
 
-const DRY = process.env.BEST_DRY === '1'; // test: use whatever pre-open data NSE shows, send nothing, save nothing
-const topic = DRY ? null : process.env.NTFY_TOPIC;
+// BEST_DRY=1: run now on whatever pre-open data NSE shows, send nothing, save nothing.
+// BEST_TEST=1 (GitHub test button): same, but sends the result to the phone marked TEST, and proves the Claude check works.
+const TEST = process.env.BEST_TEST === '1';
+const DRY = process.env.BEST_DRY === '1' || TEST;
+const topic = DRY && !TEST ? null : process.env.NTFY_TOPIC;
 const notify = async (title, body, priority, tags) => {
+  if (TEST) { title = `TEST - ${title}`; priority = 'default'; }
   log(`[${title}]\n${body}`);
   if (topic) await fetch(`https://ntfy.sh/${topic}`, { method: 'POST', body, headers: { Title: title, Priority: priority, Tags: tags } }).catch(() => {});
 };
@@ -85,7 +94,7 @@ if (best.date && best.date < today && !best.scored && best.picks?.length) {
 if (!DRY && best.date === today && best.sent) { console.log('Already sent today.'); process.exit(0); }
 
 // ---- 2. wait for pre-open prices ----
-const SEND_AT = 9 * 3600 + 4 * 60 + 40; // 9:04:40 - pre-open closes at a random moment 9:07-9:08, so this leaves ~2.5 minutes
+const SEND_AT = 9 * 3600 + 2 * 60; // 9:02:00 - leaves ~5 minutes before pre-open closes (random moment 9:07-9:08)
 if (!DRY && secs() > 9 * 3600 + 7 * 60 + 30) { console.log('Too late for pre-open today.'); process.exit(0); }
 // liquidity + overnight news while we wait
 const turnover = new Map();
@@ -97,69 +106,123 @@ for (let iso = prevDay(today), n = 0; n < 20; iso = prevDay(iso), n++) {
   for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if (p[c('SERIES')] === 'EQ' || p[c('SERIES')] === 'BE') (turnover.get(p[c('SYMBOL')]) ?? turnover.set(p[c('SYMBOL')], []).get(p[c('SYMBOL')])).push(+p[c('TURNOVER_LACS')] / 100); }
 }
 const cr = new Map([...turnover].map(([s, a]) => [s, median(a)]));
-const badNews = new Set();
-for (const a of await announcements(prevDay(today), today, 0).catch(() => [])) if (BAD_NEWS.has(categorise(a.desc ?? '', a.attchmntText ?? ''))) badNews.add(a.symbol);
-while (!DRY && secs() < SEND_AT) await sleep(5000);
 const nseDay = (() => { const [y, m, d] = today.split('-'); return `${d}-${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m - 1]}-${y}`; })();
-let pre = new Map();
-for (let i = 0; i < 6; i++) {
-  pre = await preOpen(0).catch(() => new Map());
-  if ([...pre.values()].some((p) => p.time.startsWith(nseDay))) break;
-  await sleep(8000);
-}
-if (![...pre.values()].some((p) => p.time.startsWith(nseDay))) { await notify('TODAY: no pre-open prices', 'Could not read pre-open prices from NSE (holiday, or NSE not answering). No pick today.', 'default', 'warning'); process.exit(0); }
-const gapOf = (s) => { const p = pre.get(s); return p?.iep && p.prevClose ? p.iep / p.prevClose - 1 : null; };
+while (!DRY && secs() < SEND_AT - 8) await sleep(2000);
+// read the newest lists and overnight filings right before deciding (a few seconds)
+const [row, filings] = await Promise.all([appRow(), announcements(prevDay(today), today, 0).catch(() => [])]);
+const badNews = new Set();
+for (const a of filings) if (BAD_NEWS.has(categorise(a.desc ?? '', a.attchmntText ?? ''))) badNews.add(a.symbol);
+while (!DRY && secs() < SEND_AT) await sleep(500);
 
-// ---- 3. candidates from every strategy ----
-const row = await appRow();
-const cands = [];
-const add = (symbol, kind, score, why, rule) => {
-  const p = pre.get(symbol), gap = gapOf(symbol);
-  if (!p?.iep || gap == null) return;
-  cands.push({ symbol, kind, score, why, gap, iep: p.iep, limit: round(p.iep * (1 + RULE.limitAbove)), ...rule });
-};
-// 1. panic rebound, HIGH level only (the normal level did not hold up)
-const marketGap = median([...pre.keys()].filter((s) => (cr.get(s) ?? 0) >= 2).map(gapOf).filter((g) => g != null));
-if (marketGap <= RULE.marketPanic) {
-  for (const s of pre.keys()) {
-    const g = gapOf(s);
-    if (g == null || g > RULE.panicGap[1] || g <= RULE.panicGap[0] + 0.0005 || (cr.get(s) ?? 0) < RULE.panicMinCr || badNews.has(s)) continue;
-    add(s, 'Panic rebound', 95 + Math.min(4, cr.get(s) / 500), `whole market panicking (${pct(marketGap)}), big stock opening ${pct(g)} - these bounce back`, { exit: 'fixed', stop: 0.03, target: null });
+async function freshPreOpen() {
+  for (let i = 0; i < 8; i++) {
+    const pre = await preOpen(0).catch(() => new Map());
+    if ([...pre.values()].some((p) => p.time.startsWith(nseDay))) return pre;
+    await sleep(5000);
   }
+  return null;
 }
-// 2. gap & go (results list made the evening before / 8:30 am)
-const gg = row.gapgo?.date === today ? row.gapgo : null;
-for (const c of gg?.candidates ?? []) {
-  if (c.status !== 'watch' && c.status !== 'go') continue;
-  const g = gapOf(c.symbol);
-  if (g == null || g < RULE.gapGo[0] || g >= RULE.gapGo[1] || (cr.get(c.symbol) ?? 0) < 5) continue;
-  add(c.symbol, 'Gap & Go', 85 + Math.min(5, Math.min(c.qoq, c.yoy) * 5), `result: profit ${pct(c.qoq)} vs last quarter, ${pct(c.yoy)} vs last year; opening ${pct(g)}`, { exit: 'fixed', stop: 0.03, target: 0.07 });
+// ---- 3. candidates from every strategy, for one set of pre-open prices ----
+function choose(pre) {
+  const gapOf = (s) => { const p = pre.get(s); return p?.iep && p.prevClose ? p.iep / p.prevClose - 1 : null; };
+  const cands = [];
+  const add = (symbol, kind, score, why, rule) => {
+    const p = pre.get(symbol), gap = gapOf(symbol);
+    if (!p?.iep || gap == null) return;
+    cands.push({ symbol, kind, score, why, gap, iep: p.iep, limit: round(p.iep * (1 + RULE.limitAbove)), ...rule });
+  };
+  // 1. panic rebound, HIGH level only (the normal level did not hold up)
+  const marketGap = median([...pre.keys()].filter((s) => (cr.get(s) ?? 0) >= 2).map(gapOf).filter((g) => g != null));
+  if (marketGap <= RULE.marketPanic) {
+    for (const s of pre.keys()) {
+      const g = gapOf(s);
+      if (g == null || g > RULE.panicGap[1] || g <= RULE.panicGap[0] + 0.0005 || (cr.get(s) ?? 0) < RULE.panicMinCr || badNews.has(s)) continue;
+      add(s, 'Panic rebound', 95 + Math.min(4, cr.get(s) / 500), `whole market panicking (${pct(marketGap)}), big stock opening ${pct(g)} - these bounce back`, { exit: 'fixed', stop: 0.03, target: null });
+    }
+  }
+  // 2. gap & go (results list made the evening before / 8:30 am)
+  const gg = row.gapgo?.date === today ? row.gapgo : null;
+  for (const c of gg?.candidates ?? []) {
+    if (c.status !== 'watch' && c.status !== 'go') continue;
+    const g = gapOf(c.symbol);
+    if (g == null || g < RULE.gapGo[0] || g >= RULE.gapGo[1] || (cr.get(c.symbol) ?? 0) < 5) continue;
+    add(c.symbol, 'Gap & Go', 85 + Math.min(5, Math.min(c.qoq, c.yoy) * 5), `result: profit ${pct(c.qoq)} vs last quarter, ${pct(c.yoy)} vs last year; opening ${pct(g)}`, { exit: 'fixed', stop: 0.03, target: 0.07 });
+  }
+  // 3. strong news (Claude-graded morning list)
+  const np = row.news?.picks?.date === today ? row.news.picks : null;
+  for (const w of np?.watch ?? []) {
+    const g = gapOf(w.symbol);
+    if (g == null || g < RULE.newsGap[0] || g > RULE.newsGap[1] || (cr.get(w.symbol) ?? 0) < 5) continue;
+    add(w.symbol, 'Strong news', 72 + Math.min(3, (cr.get(w.symbol) ?? 0) / 100), `${w.why}; opening ${pct(g)}`, { exit: 'trail', stop: 0.02, target: null });
+  }
+  const seen = new Set();
+  const ranked = cands.sort((a, b) => b.score - a.score).filter((c) => !seen.has(c.symbol) && seen.add(c.symbol));
+  return { marketGap, ranked };
 }
-// 3. strong news (Claude-graded morning list)
-const np = row.news?.picks?.date === today ? row.news.picks : null;
-for (const w of np?.watch ?? []) {
-  const g = gapOf(w.symbol);
-  if (g == null || g < RULE.newsGap[0] || g > RULE.newsGap[1] || (cr.get(w.symbol) ?? 0) < 5) continue;
-  add(w.symbol, 'Strong news', 72 + Math.min(3, (cr.get(w.symbol) ?? 0) / 100), `${w.why}; opening ${pct(g)}`, { exit: 'trail', stop: 0.02, target: null });
-}
-
-// ---- 4. choose: best first, one per stock, only the top level of the day ----
-const seen = new Set();
-const ranked = cands.sort((a, b) => b.score - a.score).filter((c) => !seen.has(c.symbol) && seen.add(c.symbol));
 // Very strong = Panic rebound HIGH or Gap & Go (score 85+). If any very strong stock exists, send only those (up to 3,
 // panic first, then Gap & Go). Only when there is none do strong-news stocks go out (up to 3, most traded first).
-const veryStrong = ranked.some((c) => c.score >= 85);
-const picks = ranked.filter((c) => !veryStrong || c.score >= 85).slice(0, RULE.maxPicks);
-log(`market ${pct(marketGap)}, ${cands.length} candidates: ${ranked.map((c) => `${c.symbol}(${c.kind} ${c.score.toFixed(0)})`).join(', ') || 'none'}`);
+const pickFrom = (ranked) => { const vs = ranked.some((c) => c.score >= 85); return ranked.filter((c) => !vs || c.score >= 85); };
+
+// ---- 4. Claude double-checks each pick in seconds: any red flag in the news? ----
+const VerdictSchema = z.object({ verdict: z.enum(['BUY', 'AVOID']), reason: z.string() });
+const client = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+async function headlines(symbol) {
+  const xml = await fetch(`https://www.bing.com/news/search?q=${encodeURIComponent(`"${symbol}" share`)}&format=rss&count=15&qft=interval%3d%227%22`, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(4000) }).then((r) => r.text()).catch(() => '');
+  return xml.split('<item>').slice(1, 9).map((it) => (/<title>([\s\S]*?)<\/title>/.exec(it)?.[1] ?? '').replace(/<!\[CDATA\[|\]\]>|&quot;|&amp;|&#39;/g, ' ').trim()).filter(Boolean);
+}
+async function claudeCheck(c) {
+  if (!client) return { verdict: 'BUY', reason: 'not checked (no Claude key)' };
+  const nse = filings.filter((a) => a.symbol === c.symbol).slice(0, 8).map((a) => `- ${a.an_dt}: ${(a.attchmntText || a.desc || '').replace(/\s+/g, ' ').slice(0, 220)}`);
+  const news = await headlines(c.symbol);
+  const ask = client.messages.parse({
+    model: 'claude-haiku-5-5', max_tokens: 2000, output_config: { effort: 'low', format: zodOutputFormat(VerdictSchema) },
+    system: 'You are the last safety check before an intraday buy at the 9:15 open on the NSE. Say AVOID only for a clear red flag in the news: fraud, raid, default, auditor or CEO/CFO exit, regulator ban or penalty, results actually weak or misread, promoter or big holder selling, pledge, order cancelled, or the reason given for the buy is wrong. Otherwise say BUY. reason: under 12 words.',
+    messages: [{ role: 'user', content: `${c.symbol} - strategy: ${c.kind}. Why: ${c.why}\nNSE filings since yesterday:\n${nse.join('\n') || '(none)'}\nNews headlines, last 24 h:\n${news.map((h) => `- ${h}`).join('\n') || '(none)'}` }],
+  });
+  const res = await Promise.race([ask, sleep(15000).then(() => null)]).catch(() => null);
+  return res?.parsed_output ?? { verdict: 'BUY', reason: 'Claude did not answer in time - not checked' };
+}
+
+// ---- 5. decide at 9:02, send, then watch until 9:06 and cancel any pick that stops qualifying ----
+let pre = await freshPreOpen();
+if (!pre) { await notify('TODAY: no pre-open prices', 'Could not read pre-open prices from NSE (holiday, or NSE not answering). No pick today.', 'default', 'warning'); process.exit(0); }
+let { marketGap, ranked } = choose(pre);
+const checks = new Map(await Promise.all(pickFrom(ranked).slice(0, RULE.maxPicks + 2).map(async (c) => [c.symbol, await claudeCheck(c)])));
+const avoided = [...checks].filter(([, v]) => v.verdict === 'AVOID');
+const picks = pickFrom(ranked).filter((c) => checks.get(c.symbol)?.verdict !== 'AVOID').slice(0, RULE.maxPicks);
+log(`market ${pct(marketGap)}, candidates: ${ranked.map((c) => `${c.symbol}(${c.kind} ${c.score.toFixed(0)})`).join(', ') || 'none'}; Claude avoided: ${avoided.map(([s, v]) => `${s} (${v.reason})`).join(', ') || 'none'}`);
 
 const sellText = (p) => p.exit === 'trail' ? `when it falls 1.5% from its best (you get SELL NOW), or at ₹${p.stopPrice}` : `${p.targetPrice ? `UP at ₹${p.targetPrice} or ` : ''}DOWN at ₹${p.stopPrice}, else at 3:20 pm`;
-best = { ...best, date: today, picks: picks.map(({ symbol, kind, why, gap, iep, limit, exit, stop, target, score }) => ({ symbol, kind, why, gap, iep, limit, exit, stop, target, level: score >= 85 ? 3 : 2, stopPrice: round(iep * (1 - stop)), targetPrice: target ? round(iep * (1 + target)) : null })).map((p) => ({ ...p, sell: sellText(p) })), marketGap, sent: true, scored: false, generated: new Date().toISOString() };
-if (!DRY) { await publishNews('best', best); await publishNews('final', { date: today, sent: true, picks: best.picks }); }
+best = { ...best, date: today, picks: picks.map(({ symbol, kind, why, gap, iep, limit, exit, stop, target, score }) => ({ symbol, kind, why, gap, iep, limit, exit, stop, target, level: score >= 85 ? 3 : 2, check: checks.get(symbol)?.reason, stopPrice: round(iep * (1 - stop)), targetPrice: target ? round(iep * (1 + target)) : null })).map((p) => ({ ...p, sell: sellText(p) })), avoided: avoided.map(([s, v]) => ({ symbol: s, reason: v.reason })), marketGap, sent: true, scored: false, generated: new Date().toISOString() };
+const publish = async () => { if (!DRY) { await publishNews('best', best); await publishNews('final', { date: today, sent: true, picks: best.picks }); } };
+await publish();
 const out = best.picks;
+const avoidNote = avoided.length ? `\n\nClaude removed: ${avoided.map(([s, v]) => `${s} (${v.reason})`).join('; ')}` : '';
 if (out.length) {
   await notify(`BUY TODAY: ${out.map((p) => p.symbol).join(', ')} (before 9:07)`,
-    out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   BUY: limit ₹${p.limit} in pre-open NOW\n   SELL ${p.sell}`).join('\n\n') +
-    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. If it opens above your limit, you are not filled - do not chase.`, 'urgent', 'rocket');
+    out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   Claude check: ${p.check}\n   BUY: limit ₹${p.limit} in pre-open NOW\n   SELL ${p.sell}`).join('\n\n') +
+    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. If it opens above your limit, you are not filled - do not chase. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
+} else if (TEST && ranked.length + [...pre.keys()].length) {
+  const sample = [...pre.entries()].filter(([s]) => (cr.get(s) ?? 0) >= 20).map(([s, q]) => ({ symbol: s, kind: 'test', why: `opened ${pct(q.iep / q.prevClose - 1)} today`, g: q.iep / q.prevClose - 1 })).sort((a, b) => b.g - a.g)[0];
+  const v = sample ? await claudeCheck(sample) : null;
+  await notify('NO BUY TODAY (test)', `Nothing strong in today's pre-open (market ${pct(marketGap)}).
+Claude check test on ${sample?.symbol}: ${v?.verdict} - ${v?.reason}`, 'default', 'zzz');
 } else {
-  await notify('NO BUY TODAY', `Nothing strong this morning (market opening ${pct(marketGap)}). Not trading is the winning move today - forced trades lost money in testing.\nDuring the day the live radar may still send BUY NOW on fresh news.`, 'default', 'zzz');
+  await notify('NO BUY TODAY', `Nothing strong this morning (market opening ${pct(marketGap)}). Not trading is the winning move today - forced trades lost money in testing.\nDuring the day the live radar may still send BUY NOW on fresh news.${avoidNote}`, 'default', 'zzz');
+}
+// pre-open prices keep moving until ~9:07: if a pick drops out of its range, tell the user to cancel that order
+while (!DRY && out.length && secs() < 9 * 3600 + 6 * 60 + 15) {
+  await sleep(20000);
+  const p2 = await preOpen(0).catch(() => null);
+  if (!p2) continue;
+  const still = new Set(choose(p2).ranked.map((c) => c.symbol));
+  for (const p of [...best.picks]) {
+    if (still.has(p.symbol)) continue;
+    const q = p2.get(p.symbol), g = q?.iep && q.prevClose ? q.iep / q.prevClose - 1 : null;
+    best.picks = best.picks.filter((x) => x.symbol !== p.symbol);
+    (best.cancelled ??= []).push({ symbol: p.symbol, gap: g });
+    await notify(`CANCEL ${p.symbol} - do not buy`, `${p.symbol} pre-open moved to ${g != null ? pct(g) : '?'}: it no longer fits ${p.kind}. Cancel your buy order now (before 9:07).${best.picks.length ? `\nStill buy: ${best.picks.map((x) => x.symbol).join(', ')}` : ''}`, 'urgent', 'x');
+    await publish();
+  }
 }

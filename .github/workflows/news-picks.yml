@@ -2,12 +2,13 @@ name: News picks (morning, paper test)
 on:
   schedule:
     # Morning list: read + grade overnight news (takes ~15-20 min). Several start times because GitHub timers run late.
-    - cron: '20 2 * * 1-5' # 7:50 am India time
-    - cron: '40 2 * * 1-5' # 8:10 am
-    - cron: '55 2 * * 1-5' # 8:25 am
+    # Early, because GitHub timers ran up to ~75 min late on Nov 17 and TODAY'S BUY needs this list by 9:02.
+    - cron: '0 1 * * 1-5'  # 6:30 am India time
+    - cron: '30 1 * * 1-5' # 7:00 am
+    - cron: '0 2 * * 1-5'  # 7:30 am
     # Pre-open (9:04-9:08): strong news + pre-open price +5..+15% -> BUY AT OPEN alert.
-    - cron: '31 3 * * 1-5' # 9:01 am (waits inside for 9:04)
-    - cron: '35 3 * * 1-5' # 9:05 am
+    - cron: '15 3 * * 1-5' # 8:45 am (waits inside for 9:04)
+    - cron: '25 3 * * 1-5' # 8:55 am
     # 9:30 check: which of them still hold above the open and yesterday's close -> BUY alert.
     - cron: '1 4 * * 1-5'  # 9:31 am
     - cron: '6 4 * * 1-5'  # 9:36 am
@@ -25,7 +26,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -37,7 +38,7 @@ jobs:
         run: |
           if [ -n "${{ github.event.inputs.step }}" ]; then echo "step=${{ github.event.inputs.step }}" >> $GITHUB_OUTPUT; exit 0; fi
           H=$(TZ=Asia/Kolkata date +%H%M)
-          if [ "$H" -lt 0855 ]; then echo "step=morning" >> $GITHUB_OUTPUT
+          if [ "$H" -lt 0840 ]; then echo "step=morning" >> $GITHUB_OUTPUT
           elif [ "$H" -lt 0925 ]; then echo "step=preopen" >> $GITHUB_OUTPUT
           else echo "step=confirm" >> $GITHUB_OUTPUT; fi
       - run: node news-picks.mjs ${{ steps.step.outputs.step }}

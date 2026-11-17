@@ -3,10 +3,12 @@ on:
   schedule:
     # One run lasts up to ~5h50 (GitHub's limit is 6h), so a 2nd run takes over in the afternoon.
     # Extra start times because GitHub timers run late; a run that finds another one going waits, then continues the day.
-    - cron: '35 3 * * 1-5'  # 9:05 am India time
-    - cron: '50 3 * * 1-5'  # 9:20 am (backup)
-    - cron: '10 9 * * 1-5'  # 2:40 pm (takes over from the morning run)
-    - cron: '30 9 * * 1-5'  # 3:00 pm (backup)
+    - cron: '30 2 * * 1-5'  # 8:00 am India time (waits; watches from 9:15)
+    - cron: '0 3 * * 1-5'   # 8:30 am (backup)
+    # The afternoon run queues behind the morning one and takes over when it ends (~5h45 after it started).
+    - cron: '30 5 * * 1-5'  # 11:00 am
+    - cron: '0 6 * * 1-5'   # 11:30 am
+    - cron: '30 6 * * 1-5'  # 12:00 pm
   workflow_dispatch:
     inputs:
       test:

@@ -1,20 +1,26 @@
 name: TODAY'S BUY (9:05 am, best 1-3 stocks from all strategies)
 on:
   schedule:
-    # Starts early because GitHub timers run late; the job waits inside until 9:04:40 for pre-open prices.
-    - cron: '10 3 * * 1-5' # 8:40 am India time
-    - cron: '20 3 * * 1-5' # 8:50 am
-    - cron: '28 3 * * 1-5' # 8:58 am
+    # GitHub timers ran up to ~75 min late on Nov 17, so start very early; the job waits inside until 9:02:00.
+    - cron: '30 1 * * 1-5' # 7:00 am India time
+    - cron: '0 2 * * 1-5'  # 7:30 am
+    - cron: '30 2 * * 1-5' # 8:00 am
+    - cron: '45 2 * * 1-5' # 8:15 am
   workflow_dispatch:
+    inputs:
+      test:
+        description: "Test now: decide on today's pre-open prices, Claude-check, send to phone marked TEST"
+        type: boolean
+        default: true
 
 concurrency:
-  group: best-pick
+  group: best-pick-${{ github.event_name }} # a manual test never waits behind the morning run
   cancel-in-progress: false # a later start waits, sees today's message was sent, and stops
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,6 +29,8 @@ jobs:
       - run: npm ci
       - run: node best-pick.mjs
         env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BEST_TEST: ${{ github.event.inputs.test == 'true' && '1' || '' }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
