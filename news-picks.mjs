@@ -94,7 +94,7 @@ if (MODE === 'preopen') {
   for (let tries = 0; tries < 10; tries++) {
     pre = await preOpen(0).catch(() => new Map());
     const fresh = [...pre.values()].some((p) => p.time.startsWith(nseDay));
-    if (fresh && mins() >= 9 * 60 + 6) break; // later in the auction = closer to the real opening price
+    if (fresh && mins() >= 9 * 60 + 4) break; // TODAY'S BUY (today-picks.mjs) sends the combined list at about 9:05
     if (mins() >= 9 * 60 + 8) break;
     await sleep(15000);
   }
@@ -106,7 +106,7 @@ if (MODE === 'preopen') {
   await save(state);
   if (opens.length) await notify(`News picks: BUY AT OPEN ${opens.map((p) => p.symbol).join(', ')} (paper test)`,
     opens.map((p) => `${p.symbol}: pre-open Rs ${p.iep} (${pct(p.gap)}) -> limit buy Rs ${round(p.iep * (1 + RULE.limitAbove))}. ${p.why}`).join('\n') +
-    `\n\nPlace the limit buy NOW (before 9:08). SELL as soon as it falls 1.5% from its best price after you buy. If it opens above your limit, you are not filled: do not chase.`, 'urgent', 'rocket');
+    `\n\nPart of TODAY'S BUY (one combined message at ~9:05).`, 'min', 'rocket');
   else console.log('No strong-news stock is +5..+15% in pre-open today.');
   process.exit(0);
 }
@@ -133,10 +133,10 @@ if (MODE === 'confirm') {
   state.today.buys = buys.map(({ symbol, why, at930, gap, open, prevClose }) => ({ symbol, why, buy: at930, gap, open, prevClose }));
   await save(state);
   const skipped = checked.filter((p) => !p.ok).map((p) => `${p.symbol} (${p.note})`).join(', ');
-  if (!buys.length) await notify('News picks: no buy today', `None of today's strong-news stocks held above its open and yesterday's close at 9:30.${skipped ? `\nSkipped: ${skipped}` : ''}`, 'low', 'zzz');
+  if (!buys.length) await notify('News picks: no buy today', `None of today's strong-news stocks held above its open and yesterday's close at 9:30.${skipped ? `\nSkipped: ${skipped}` : ''}`, 'min', 'zzz');
   else await notify(`News picks: BUY ${buys.map((b) => b.symbol).join(', ')} (paper test)`,
     buys.map((b) => `${b.symbol} ~Rs ${b.at930.toFixed(2)} (opened ${pct(b.gap)}): ${b.why}`).join('\n') +
-    `\n\nSELL when it falls 2% from its highest price after you buy, or at +3%. Never hold past 3:20 pm.${skipped ? `\nSkipped: ${skipped}` : ''}`, 'high', 'moneybag');
+    `\n\nExtra signal (small edge), not part of TODAY'S BUY. SELL when it falls 2% from its highest price, or at +3%. Never hold past 3:20 pm.${skipped ? `\nSkipped: ${skipped}` : ''}`, 'min', 'moneybag');
   process.exit(0);
 }
 

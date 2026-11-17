@@ -162,11 +162,11 @@ if (high.length) {
   const body = [`Whole market opening ${pct(marketGap)}: panic morning. Past record: 10 of 10 such days won (small sample).`,
     ...high.map((p) => `${p.symbol}: opening ${pct(p.gap)}. Pre-open BUY limit Rs ${p.limit} (${qty(p)}). Stop Rs ${p.stopPrice}, sell at 3:20 pm.`),
     `Check for bad news first.${newsNote}`].join(NL);
-  await notify(`HIGH CONFIDENCE: market panic, ${high.length} pick${high.length > 1 ? 's' : ''} (pre-open closes 9:07)`, body, 'urgent', 'green_circle');
+  await notify(`HIGH CONFIDENCE: market panic, ${high.length} pick${high.length > 1 ? 's' : ''} (pre-open closes 9:07)`, body, 'min', 'green_circle'); // TODAY'S BUY (today-picks.mjs) sends it loud
 } else if (normal.length) {
   const body = [...normal.map((p) => `${p.symbol}: yesterday ${pct(p.yRet)}, opening ${pct(p.gap)}. Pre-open BUY limit Rs ${p.limit} (${qty(p)}). Stop Rs ${p.stopPrice}, target Rs ${p.targetPrice}, else sell 3:20 pm.`),
     `NORMAL level: WATCH ONLY, no money.${newsNote}`].join(NL);
-  await notify(`Panic rebound (watch only): ${normal.length} pick${normal.length > 1 ? 's' : ''}`, body, 'default', 'white_circle');
+  await notify(`Panic rebound (watch only): ${normal.length} pick${normal.length > 1 ? 's' : ''}`, body, 'min', 'white_circle');
 } else {
   await notify('Panic rebound: no picks today', `Market opening ${pct(marketGap)}. Nothing matched. No trade is a fine answer.`, 'min', 'zzz');
 }

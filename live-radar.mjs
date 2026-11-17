@@ -188,7 +188,10 @@ while (hhmmNow() < endAt) {
       return;
     }
     if (g.grade !== 2 || g.strength < RULE.minStrength) return;
-    if (state.trades.length >= RULE.maxBuys || state.trades.some((t) => t.symbol === w.x.symbol) || hhmmNow() > RULE.lastBuy) { log(`  (strong, but ${hhmmNow() > RULE.lastBuy ? 'too late in the day' : 'already have enough buys'})`); return; }
+    // never more than 3 buys in a day, counting this morning's TODAY'S BUY
+    const morningBuys = await fetch(`${process.env.SUPABASE_URL}/rest/v1/radar?id=eq.1&select=payload`, { headers: { apikey: process.env.SUPABASE_SERVICE_KEY ?? '' } })
+      .then((r) => r.json()).then((j) => { const f = j?.[0]?.payload?.news?.final; return f?.date === today ? f.picks.length : 0; }).catch(() => 0);
+    if (state.trades.length + morningBuys >= RULE.maxBuys || state.trades.some((t) => t.symbol === w.x.symbol) || hhmmNow() > RULE.lastBuy) { log(`  (strong, but ${hhmmNow() > RULE.lastBuy ? 'too late in the day' : 'already have enough buys'})`); return; }
     // 2. price check: buyers stepping in, not already gone
     const b = await bars1(w.x.symbol);
     if (!b?.last || !b.prevClose) return;

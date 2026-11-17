@@ -104,7 +104,7 @@ if (topic && fresh.length) {
     ...go.map((r) => `GO ${r.symbol}: buy ${Math.floor(perStock / r.openPrice)} at Rs ${Math.round(r.openPrice * 1.01)} (intraday). Sell up Rs ${r.targetPrice}, sell down Rs ${r.stopPrice}, else 3:20 pm.`),
     ...watch.map((r) => `${r.symbol} (${r.company}): good result at ${r.announced.slice(11)}. Profit vs last qtr ${pct(r.qoq)}, vs last year ${pct(r.yoy)}. Check at 9:03 am ${evening ? dayName : 'today'}: buy only if it opens 5-20% up.`),
   ];
-  const res = await fetch(`https://ntfy.sh/${topic}`, { method: 'POST', body: lines.join('\n'), headers: { Title: go.length ? `Gap & Go: ${go.length} GO today` : `Good result${watch.length > 1 ? 's' : ''}: ${watch.map((r) => r.symbol).join(', ')}`, Priority: go.length ? 'high' : 'default', Tags: go.length ? 'rocket' : 'eyes' } });
+  const res = await fetch(`https://ntfy.sh/${topic}`, { method: 'POST', body: lines.join('\n'), headers: { Title: go.length ? `Gap & Go: ${go.length} GO today` : `Good result${watch.length > 1 ? 's' : ''}: ${watch.map((r) => r.symbol).join(', ')}`, Priority: go.length ? 'min' : 'default', Tags: go.length ? 'rocket' : 'eyes' } });
   console.log(res.ok ? `Phone notified: ${fresh.length}` : `Notification failed: ${res.status}`);
   if (res.ok) fresh.forEach((r) => notified.add(`${r.status}:${r.symbol}`));
 }

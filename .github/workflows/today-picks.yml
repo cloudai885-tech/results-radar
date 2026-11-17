@@ -1,0 +1,28 @@
+name: TODAY'S BUY (one message at 9:05)
+on:
+  schedule:
+    # Starts early because GitHub timers run late; it waits inside until the morning checks are done (~9:05).
+    - cron: '15 3 * * 1-5' # 8:45 am India time
+    - cron: '25 3 * * 1-5' # 8:55 am
+    - cron: '31 3 * * 1-5' # 9:01 am
+  workflow_dispatch:
+
+concurrency:
+  group: today-picks
+  cancel-in-progress: false # a later start waits, then sees it was already sent
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: node today-picks.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
