@@ -4,18 +4,22 @@
 //
 //   node news-picks.mjs morning   (about 8:00-8:45 am) collect overnight NSE filings + media headlines, Claude grades them,
 //                                 phone gets the watchlist. Also scores yesterday's buys first.
-//   node news-picks.mjs confirm   (9:31 am) checks the 9:30 rule on the watchlist, phone gets the BUY list (max 3).
+//   node news-picks.mjs preopen   (9:04-9:08 am) "first push": strong-news stocks whose pre-open price is +5..+15% -> BUY AT OPEN
+//                                 (research/18-open-pull.mjs: 4/4 won, +2.8% avg selling on a 1.5% drop from the best; same idea as
+//                                 Gap & Go, which held over 2 years for results). Sell on a 1.5% drop from the best price.
+//   node news-picks.mjs confirm   (9:31 am) second chance: the 9:30 rule on the rest of the watchlist, BUY list (max 3).
 // Env: ANTHROPIC_API_KEY (grading; without it a rough keyword grade is used), NTFY_TOPIC, SUPABASE_URL, SUPABASE_SERVICE_KEY.
 // NEWS_DATE=YYYY-MM-DD runs the morning step for a past day (no phone, no database) to check it.
 import fs from 'node:fs';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import { fetchCached, announcements, holidays } from './src/sources.mjs';
+import { fetchCached, announcements, holidays, preOpen } from './src/sources.mjs';
 import { typeOf } from './research/news-types.mjs';
 
 const MODE = process.argv[2] ?? 'morning';
-const RULE = { minCr: 5, maxBuys: 3, trail: 0.02, target: 0.03, stop: 0.02, maxGap: 0.05 };
+const RULE = { minCr: 5, maxBuys: 3, trail: 0.02, target: 0.03, stop: 0.02, maxGap: 0.05, openGapMin: 0.05, openGapMax: 0.15, openTrail: 0.015, limitAbove: 0.005 };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SIM = process.env.NEWS_DATE;
 const ist = () => new Date(Date.now() + 19800e3);
 const isoOf = (d) => d.toISOString().slice(0, 10);
@@ -58,21 +62,50 @@ async function bars5(symbol, iso) {
   const out = r.timestamp.map((t, i) => { const d = new Date((t + 19800) * 1000); return { hhmm: d.getUTCHours() * 100 + d.getUTCMinutes(), o: q.open[i], h: q.high[i], l: q.low[i], c: q.close[i] }; }).filter((b) => b.o != null && b.c != null);
   return { bars: out, prevClose: r.meta?.chartPreviousClose ?? r.meta?.previousClose };
 }
-// Walk the bars after the buy: stop, trailing stop from the best price, +3% target, else 3:20 pm.
-function walk(bars, fromHhmm, px) {
+// Walk the bars after the buy: stop, trailing stop from the best price, optional target, else 3:20 pm.
+function walk(bars, fromHhmm, px, trail = RULE.trail, target = RULE.target) {
   let peak = px;
   for (const b of bars.filter((x) => x.hhmm >= fromHhmm && x.hhmm <= 1515)) {
-    const stop = Math.max(px * (1 - RULE.stop), peak * (1 - RULE.trail));
-    if (b.l <= stop) return { ret: Math.min(b.o, stop) / px - 1, how: stop > px * (1 - RULE.stop) ? 'sellers came (2% off the high)' : 'stop' };
-    if (b.h >= px * (1 + RULE.target)) return { ret: RULE.target, how: 'target +3%' };
+    const stop = Math.max(px * (1 - RULE.stop), peak * (1 - trail));
+    if (b.l <= stop) return { ret: Math.min(b.o, stop) / px - 1, how: stop > px * (1 - RULE.stop) ? `sellers came (${trail * 100}% off the high)` : 'stop' };
+    if (target && b.h >= px * (1 + target)) return { ret: target, how: `target +${target * 100}%` };
     peak = Math.max(peak, b.h);
   }
   const last = bars.filter((x) => x.hhmm <= 1515).at(-1);
   return last ? { ret: last.c / px - 1, how: '3:20 pm' } : null;
 }
 
-const state = SIM ? {} : await load();
+const state = await load(); // in NEWS_DATE mode there is no database, so this reads the local test file and never saves
 state.history ??= [];
+
+if (MODE === 'preopen') {
+  // ---------------- 9:04-9:08 am: the first push. Strong news + buyers rushing in at the auction ----------------
+  if (state.today?.date !== today) { console.log('No watchlist for today (morning step did not run).'); process.exit(0); }
+  if (state.today.preopenDone) { console.log('Pre-open step already done today.'); process.exit(0); }
+  const mins = () => { const n = ist(); return n.getUTCHours() * 60 + n.getUTCMinutes(); };
+  if (!SIM && mins() > 9 * 60 + 12) { console.log('Too late for pre-open today.'); process.exit(0); }
+  while (!SIM && mins() < 9 * 60 + 4) await sleep(15000);
+  const nseDay = (() => { const [y, m, d] = today.split('-'); return `${d}-${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m - 1]}-${y}`; })();
+  let pre = new Map();
+  for (let tries = 0; tries < 10; tries++) {
+    pre = await preOpen(0).catch(() => new Map());
+    const fresh = [...pre.values()].some((p) => p.time.startsWith(nseDay));
+    if (fresh && mins() >= 9 * 60 + 6) break; // later in the auction = closer to the real opening price
+    if (mins() >= 9 * 60 + 8) break;
+    await sleep(15000);
+  }
+  const opens = state.today.watch.map((p) => { const q = pre.get(p.symbol); return q?.iep && q.prevClose ? { ...p, iep: q.iep, prevClose: q.prevClose, gap: q.iep / q.prevClose - 1 } : null; })
+    .filter((p) => p && p.gap >= RULE.openGapMin && p.gap <= RULE.openGapMax).sort((a, b) => b.cr - a.cr).slice(0, RULE.maxBuys);
+  const round = (x) => Math.round(x * 20) / 20;
+  state.today.preopenDone = true;
+  state.today.openBuys = opens.map(({ symbol, why, iep, gap }) => ({ symbol, why, iep, gap, limit: round(iep * (1 + RULE.limitAbove)) }));
+  await save(state);
+  if (opens.length) await notify(`News picks: BUY AT OPEN ${opens.map((p) => p.symbol).join(', ')} (paper test)`,
+    opens.map((p) => `${p.symbol}: pre-open Rs ${p.iep} (${pct(p.gap)}) -> limit buy Rs ${round(p.iep * (1 + RULE.limitAbove))}. ${p.why}`).join('\n') +
+    `\n\nPlace the limit buy NOW (before 9:08). SELL as soon as it falls 1.5% from its best price after you buy. If it opens above your limit, you are not filled: do not chase.`, 'urgent', 'rocket');
+  else console.log('No strong-news stock is +5..+15% in pre-open today.');
+  process.exit(0);
+}
 
 if (MODE === 'confirm') {
   // ---------------- 9:31 am: which watchlist stocks are still holding up? ----------------
@@ -81,7 +114,8 @@ if (MODE === 'confirm') {
   const now = ist(); const hhmm = now.getUTCHours() * 100 + now.getUTCMinutes();
   if (!SIM && hhmm < 930) { console.log('Too early: the 9:30 check needs the 9:25-9:30 bar.'); process.exit(0); }
   const checked = [];
-  for (const p of state.today.watch) {
+  const boughtAtOpen = new Set((state.today.openBuys ?? []).map((b) => b.symbol));
+  for (const p of state.today.watch.filter((x) => !boughtAtOpen.has(x.symbol))) {
     const d = await bars5(p.symbol, today);
     const open = d?.bars.find((b) => b.hhmm === 915)?.o, at930 = d?.bars.find((b) => b.hhmm === 925)?.c;
     if (!open || !at930 || !d.prevClose) { checked.push({ ...p, ok: false, note: 'no price data' }); continue; }
@@ -106,9 +140,20 @@ if (MODE === 'confirm') {
 if (!SIM && state.today?.date === today) { console.log('Morning list already sent today.'); process.exit(0); }
 // 1. score yesterday's buys (what the rule would have made)
 const last = state.today;
-if (last && last.date < today && last.buys?.length && !last.scored) {
+if (last && last.date < today && (last.buys?.length || last.openBuys?.length) && !last.scored) {
   const lines = [];
-  for (const b of last.buys) {
+  // open buys: filled at the real opening price only if it opened at or below the limit
+  for (const b of last.openBuys ?? []) {
+    const d = await bars5(b.symbol, last.date);
+    const open = d?.bars.find((x) => x.hhmm === 915)?.o;
+    if (!open) continue;
+    if (open > b.limit) { lines.push(`${b.symbol} (open buy): opened Rs ${open} above limit Rs ${b.limit} -> not filled`); continue; }
+    const r = walk(d.bars, 915, open, RULE.openTrail, 0);
+    if (!r) continue;
+    b.result = r.ret - 0.004; b.how = r.how;
+    lines.push(`${b.symbol} (open buy): ${r.how} -> ${pct(b.result)}`);
+  }
+  for (const b of last.buys ?? []) {
     const d = await bars5(b.symbol, last.date);
     const r = d && walk(d.bars, 930, b.buy);
     if (!r) continue;
@@ -116,7 +161,7 @@ if (last && last.date < today && last.buys?.length && !last.scored) {
     lines.push(`${b.symbol}: ${r.how} -> ${pct(b.result)}`);
   }
   last.scored = true;
-  const done = last.buys.filter((b) => b.result != null);
+  const done = [...(last.openBuys ?? []), ...(last.buys ?? [])].filter((b) => b.result != null);
   state.history.push({ date: last.date, buys: done.map(({ symbol, result, how }) => ({ symbol, result, how })) });
   const all = state.history.flatMap((h) => h.buys);
   if (lines.length) await notify(`News picks: ${last.date} scorecard`, `${lines.join('\n')}\nSo far: ${all.length} buys, avg ${pct(all.reduce((s, x) => s + x.result, 0) / all.length)} after costs, ${all.filter((x) => x.result > 0).length} won.`, 'low', 'clipboard');
