@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import { fetchCached, preOpen, preOpenSnapshot, announcements } from './src/sources.mjs';
 import { categorise } from './research/categories.mjs';
+import { publishNews } from './src/app-publish.mjs';
 
 const RULE = { panicMarket: -0.012, highMinCr: 20, yFall: -0.03, gapMax: -0.03, gapMin: -0.05, minCr: 3, maxPicks: 3, stop: 0.03, target: 0.07, limitAbove: 0.005, capitalRs: 10000 };
 const BAD_NEWS = new Set(['result', 'legal', 'rating', 'fundraise']);
@@ -52,6 +53,9 @@ const save = async () => {
   if (!sb) return;
   const res = await fetch(sb.url, { method: 'POST', headers: { apikey: sb.key, 'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ id: 3, payload: state, updated_at: new Date().toISOString() }) });
   if (!res.ok) throw new Error(`Supabase save failed: ${res.status} ${await res.text()}`);
+  // the app's News tab
+  const t = state.today ?? {};
+  await publishNews('panic', { date: t.date, marketGap: t.marketGap, panicMorning: t.panicMorning, picks: (t.picks ?? []).map(({ symbol, tier, yRet, gap, iep, limit, stopPrice, targetPrice, result, howEnded }) => ({ symbol, tier, yRet, gap, iep, limit, stopPrice, targetPrice, result, howEnded })), history: state.history.slice(-30) });
 };
 const topic = SIM ? null : process.env.NTFY_TOPIC;
 const notify = async (title, body, priority = 'default', tags = 'chart_with_upwards_trend') => {

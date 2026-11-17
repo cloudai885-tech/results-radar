@@ -221,9 +221,8 @@ function renderNews() {
   const el = document.getElementById('view-news');
   const n = data.news ?? {}, today = istToday();
   const p = n.picks?.date === today ? n.picks : null, l = n.live?.date === today ? n.live : null;
-  const intro = `<div class="hero r-excellent"><small>News trades · paper test</small>
-    <p style="margin:6px 0 0">Good news → <b>buy fast</b> → <b>sell when the push stops</b> (it falls 1.5-2% from its best). Never hold overnight.
-    Your phone (ntfy) gets every alert first; this page is to check later.</p></div>`;
+  const intro = `<div class="hero r-excellent"><small>Today's trades · paper test</small>
+    <p style="margin:6px 0 0">Every buy signal of the day in one place: <b>news</b>, <b>Gap &amp; Go</b> and <b>Panic rebound</b>. Each card shows when to buy and when to sell. Never hold overnight. Your phone (ntfy) gets every alert first; this page is to check later.</p></div>`;
   // 1. live BUY NOW
   const live = (l?.trades ?? []).map((t) => {
     const sold = t.ret != null;
@@ -246,10 +245,19 @@ function renderNews() {
   // 5. bad news
   const liveBad = new Set((l?.badNews ?? []).map((b) => b.symbol));
   const bad = [...(l?.badNews ?? []).map((b) => row(b.symbol, `${b.at} · ${b.why}`, true)), ...(p?.bad ?? []).filter((s) => !liveBad.has(s)).map((s) => row(s, 'overnight bad news', true))].join('');
+  // 5a. gap & go (full detail on its own tab)
+  const g = data.gapgo?.date === today ? data.gapgo : null;
+  const gapRows = (g?.candidates ?? []).filter((c) => c.status === 'go' || c.status === 'watch').map((c) => gapCard(c, g.rules, g.candidates.filter((x) => x.status === 'go').length)).join('');
+  // 5b. panic rebound
+  const pr = n.panic?.date === today ? n.panic : null;
+  const panic = (pr?.picks ?? []).map((x) => newsCard(x.result == null ? (x.tier === 'high' ? 'r-excellent' : 'r-good') : x.result >= 0 ? 'r-excellent' : 'r-bad', x.symbol,
+    `fell ${pct(x.yRet ?? 0)} yesterday`, `<b class="neg">${esc(pct(x.gap))}</b><span>opening</span>`, x.result != null ? pct(x.result) : x.tier === 'high' ? 'HIGH' : 'Watch',
+    `<ol class="simple"><li><b>Limit buy ₹${esc(x.limit)}</b><span>in pre-open, before 9:07 am</span></li><li><b>Sell DOWN at ₹${esc(x.stopPrice)}</b><span>-3% stop</span></li>${x.targetPrice ? `<li><b>Sell UP at ₹${esc(x.targetPrice)}</b><span>+7% target</span></li>` : ''}<li><b>Neither? Sell at 3:20 pm</b><span>never hold overnight</span></li></ol>${x.howEnded ? `<p class="note">Ended: ${esc(x.howEnded)}</p>` : ''}`)).join('');
   // 6. scorecard over all paper trades
   const all = [...(n.picks?.history ?? []).flatMap((h) => h.buys.map((b) => ({ d: h.date, symbol: b.symbol, result: b.result, kind: 'morning' }))),
     ...(n.live?.history ?? []).flatMap((h) => h.trades.filter((t) => t.ret != null).map((t) => ({ d: h.date, symbol: t.symbol, result: t.ret, kind: 'live' }))),
-    ...(l?.trades ?? []).filter((t) => t.ret != null).map((t) => ({ d: today, symbol: t.symbol, result: t.ret, kind: 'live' }))];
+    ...(l?.trades ?? []).filter((t) => t.ret != null).map((t) => ({ d: today, symbol: t.symbol, result: t.ret, kind: 'live' })),
+    ...(n.panic?.history ?? []).flatMap((h) => h.picks.map((x) => ({ d: h.date, symbol: x.symbol, result: x.result - 0.004, kind: 'panic' })))].sort((x, y) => x.d.localeCompare(y.d));
   const won = all.filter((x) => x.result > 0).length, avg = all.length ? all.reduce((s, x) => s + x.result, 0) / all.length : 0;
   const score = all.length ? `<div class="track" style="margin-top:0"><div class="stats"><div class="stat"><b>${all.length}</b><span>trades</span></div><div class="stat"><b>${Math.round((won / all.length) * 100)}%</b><span>won</span></div><div class="stat">${plain(avg)}<span>avg per trade</span></div></div>
     ${all.slice(-12).reverse().map((x) => `<div class="track-row"><span>${esc(x.d.slice(5))} · <b>${esc(x.symbol)}</b> <span style="color:var(--muted)">${x.kind}</span></span>${plain(x.result)}</div>`).join('')}
@@ -259,9 +267,11 @@ function renderNews() {
     section('🚀', 'Buy now (live)', 'Strong news came out during the day. Alert sent within seconds.', live, 'No BUY NOW yet today. Strong news does not come every day.') +
     section('🌅', 'Buy at open', 'Strong overnight news, and buyers rushing in before 9:08 am (pre-open +5% or more).', open, p?.preopenDone ? 'None today: no strong-news stock opened +5% or more.' : 'Comes at 9:04-9:08 am.') +
     section('✅', 'Buy at 9:30', "Strong overnight news, still above its open and yesterday's close at 9:30.", at930, p?.confirmed ? 'None today: none of them held up at 9:30.' : 'Comes at 9:31 am.') +
+    section('🎯', 'Gap & Go (results)', 'Results beat last quarter AND last year, and the stock opens 5-20% up: buy at the open.', gapRows, g ? 'No GO today.' : 'Watch list 8:30 am, GO list 9:03 am.') +
+    section('📉', 'Panic rebound', 'Fell 3%+ yesterday and opens 3-5% down again with no bad news: it usually bounces back during the day. HIGH = whole market panicking.', panic, pr ? `None today. Market opening ${pct(pr.marketGap ?? 0)}.` : 'Comes at about 9:04 am.') +
     section('👀', 'Good news - just watch', 'Good news, but no buy signal. Do not buy these on your own.', box(good), p ? 'No strong good news overnight.' : 'The morning list comes at 7:50-8:25 am.') +
     section('⛔', 'Bad news - avoid or sell', 'If you hold one of these, think about selling.', box(bad), 'No bad news found.') +
-    section('📊', 'Scorecard', 'How every paper trade turned out.', score, 'No finished trades yet. Results show after the first trading day.') +
+    section('📊', 'Scorecard', 'How every paper trade turned out (news, live and panic rebound).', score, 'No finished trades yet. Results show after the first trading day.') +
     (when ? `<p class="note" style="text-align:center">News updated ${esc(when)}${p?.mode === 'keyword' ? ' · rough keyword reading (no Claude key)' : ''}</p>` : '');
 }
 
