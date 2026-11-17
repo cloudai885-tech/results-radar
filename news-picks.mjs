@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import { fetchCached, announcements, holidays, preOpen } from './src/sources.mjs';
+import { fetchCached, announcements, holidays, preOpen, priceBands, buyLimit } from './src/sources.mjs';
 import { typeOf } from './research/news-types.mjs';
 import { publishNews } from './src/app-publish.mjs';
 
@@ -100,12 +100,13 @@ if (MODE === 'preopen') {
   }
   const opens = state.today.watch.map((p) => { const q = pre.get(p.symbol); return q?.iep && q.prevClose ? { ...p, iep: q.iep, prevClose: q.prevClose, gap: q.iep / q.prevClose - 1 } : null; })
     .filter((p) => p && p.gap >= RULE.openGapMin && p.gap <= RULE.openGapMax).sort((a, b) => b.cr - a.cr).slice(0, RULE.maxBuys);
-  const round = (x) => Math.round(x * 20) / 20;
   state.today.preopenDone = true;
-  state.today.openBuys = opens.map(({ symbol, why, iep, gap }) => ({ symbol, why, iep, gap, limit: round(iep * (1 + RULE.limitAbove)) }));
+  const bands = await priceBands();
+  for (const p of opens) p.limit = buyLimit(p.iep, p.prevClose, bands.get(p.symbol), RULE.limitAbove);
+  state.today.openBuys = opens.map(({ symbol, why, iep, gap, limit }) => ({ symbol, why, iep, gap, limit }));
   await save(state);
   if (opens.length) await notify(`News picks: BUY AT OPEN ${opens.map((p) => p.symbol).join(', ')} (paper test)`,
-    opens.map((p) => `${p.symbol}: pre-open Rs ${p.iep} (${pct(p.gap)}) -> limit buy Rs ${round(p.iep * (1 + RULE.limitAbove))}. ${p.why}`).join('\n') +
+    opens.map((p) => `${p.symbol}: pre-open Rs ${p.iep} (${pct(p.gap)}) -> limit buy Rs ${p.limit}. ${p.why}`).join('\n') +
     `\n\nPart of TODAY'S BUY (one combined message at ~9:05).`, 'min', 'rocket');
   else console.log('No strong-news stock is +5..+15% in pre-open today.');
   process.exit(0);

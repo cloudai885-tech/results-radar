@@ -16,7 +16,7 @@
 //                                Claude checks each pick for red flags (seconds), sends, then sends CANCEL until 9:06
 //                                if a pick's pre-open price leaves its range.
 // Also scores yesterday's picks first (5-minute candles) and keeps the record for the app (row 1, news.best).
-import { fetchCached, preOpen, announcements, holidays } from './src/sources.mjs';
+import { fetchCached, preOpen, announcements, holidays, priceBands, buyLimit } from './src/sources.mjs';
 import { categorise } from './research/categories.mjs';
 import { publishNews } from './src/app-publish.mjs';
 import Anthropic from '@anthropic-ai/sdk';
@@ -127,6 +127,7 @@ async function freshPreOpen() {
   }
   return null;
 }
+const bands = await priceBands(); // circuit limits, so the buy limit is never above the upper circuit
 // ---- 3. candidates from every strategy, for one set of pre-open prices ----
 function choose(pre) {
   const gapOf = (s) => { const p = pre.get(s); return p?.iep && p.prevClose ? p.iep / p.prevClose - 1 : null; };
@@ -134,7 +135,7 @@ function choose(pre) {
   const add = (symbol, kind, score, why, rule) => {
     const p = pre.get(symbol), gap = gapOf(symbol);
     if (!p?.iep || gap == null) return;
-    cands.push({ symbol, kind, score, why, gap, iep: p.iep, limit: round(p.iep * (1 + RULE.limitAbove)), ...rule });
+    cands.push({ symbol, kind, score, why, gap, iep: p.iep, limit: buyLimit(p.iep, p.prevClose, bands.get(symbol), RULE.limitAbove), ...rule });
   };
   // 1. panic rebound, HIGH level only (the normal level did not hold up)
   const marketGap = median([...pre.keys()].filter((s) => (cr.get(s) ?? 0) >= 2).map(gapOf).filter((g) => g != null));
@@ -215,7 +216,7 @@ const avoidNote = avoided.length ? `\n\nClaude removed: ${avoided.map(([s, v]) =
 if (out.length) {
   await notify(`BUY TODAY: ${out.map((p) => p.symbol).join(', ')} (before 9:07)`,
     out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   Claude check: ${p.check}\n   BUY: limit ₹${p.limit} in pre-open NOW${p.level === 1 ? ' (HALF your usual money; only in pre-open, never after 9:15)' : ''}\n   SELL ${p.sell}`).join('\n\n') +
-    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. Limit is up to 3% above the pre-open price, so you rarely miss. Paid more than the pre-open price? Set your stop 3% below YOUR buy price. Not bought by 9:15? Cancel the order - never buy later. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
+    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. Limit is up to 3% above the pre-open price (never above the upper circuit), so you rarely miss. Paid more than the pre-open price? Set your stop 3% below YOUR buy price. Not bought by 9:15? Cancel the order - never buy later. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
 } else if (TEST && ranked.length + [...pre.keys()].length) {
   const sample = [...pre.entries()].filter(([s]) => (cr.get(s) ?? 0) >= 20).map(([s, q]) => ({ symbol: s, kind: 'test', why: `opened ${pct(q.iep / q.prevClose - 1)} today`, g: q.iep / q.prevClose - 1 })).sort((a, b) => b.g - a.g)[0];
   const v = sample ? await claudeCheck(sample) : null;

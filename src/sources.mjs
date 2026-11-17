@@ -283,3 +283,25 @@ export async function mapPool(items, size, fn, onProgress) {
   }));
   return out;
 }
+
+// ---- Circuit limits (price bands) ----------------------------------------
+// NSE's daily list: band 2/5/10/20 (% from yesterday's close). "No Band" = F&O stocks: NSE starts them at a 10% range
+// and widens it in 5% steps once the price gets there. A buy limit above the band is rejected by the exchange.
+export async function priceBands(ttlHours = 12) {
+  const body = await fetchCached('https://nsearchives.nseindia.com/content/equities/sec_list.csv', { ttlHours, attempts: 3 }).catch(() => null);
+  const bands = new Map();
+  for (const line of (body ?? '').split(/\r?\n/).slice(1)) {
+    const m = /^([^,]+),([^,]+),.*,(\d+|No Band),"[^"]*"\s*$/.exec(line);
+    if (!m || (bands.has(m[1]) && m[2] !== 'EQ')) continue;
+    bands.set(m[1], m[3] === 'No Band' ? null : Number(m[3]) / 100);
+  }
+  return bands;
+}
+
+// Buy limit: `above` over the pre-open price, but never above the upper circuit (else the order is rejected).
+// Rounded down to the 5-paise tick so it can never land just over the circuit.
+export function buyLimit(iep, prevClose, band, above) {
+  let upper = prevClose * (1 + (band ?? 0.1));
+  if (band == null) while (upper < iep) upper += prevClose * 0.05; // F&O range already widened
+  return Math.floor(Math.max(iep, Math.min(iep * (1 + above), upper)) * 20 + 1e-6) / 20;
+}
