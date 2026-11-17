@@ -317,11 +317,17 @@ async function fetchData() {
   return rows[0].payload;
 }
 
+let lastJson = '';
 async function load() {
   const updated = document.getElementById('updated');
   try {
-    data = await fetchData();
+    const fresh = await fetchData();
+    const js = JSON.stringify(fresh);
+    if (js === lastJson) return; // nothing new: keep the screen (and any open card) as it is
+    lastJson = js;
+    data = fresh;
   } catch {
+    if (data) return; // a failed background refresh keeps what is on screen
     updated.textContent = 'No ratings yet';
     document.getElementById('days').innerHTML = '<p class="empty">No ratings yet. Check back after the next update.</p>';
     return;
@@ -336,4 +342,7 @@ async function load() {
 }
 
 load();
+// Stay fresh: every 20 seconds while the app is on screen, and at once when you come back to it.
+setInterval(() => { if (!document.hidden) load(); }, 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
