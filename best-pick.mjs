@@ -6,6 +6,9 @@
 //      Sell at +7% or -3%, else 3:20 pm.
 //   3. Strong news (Claude-graded, morning list) and opens +5..+15%. One month: +1.2% a trade, 8 of 15 won.
 //      Sell when it falls 1.5% from its best (the live radar sends SELL NOW).
+//   4. Bounce-back, only when 1-3 have nothing: fell 3%+ yesterday, opens -3..-5% again, no bad news (research/22:
+//      +0.94% a day on such days, every half-year positive since 2025; needs the exact pre-open fill). Half money.
+//      Sell at +7% or -3%, else 3:20 pm.
 // Only the top level of the day is sent: if one strategy is clearly stronger, only its stocks go out (often just 1).
 // Nothing strong -> "NO BUY TODAY". The month's tests showed forced trades on other days lose about 0.4% each.
 //
@@ -98,11 +101,13 @@ const SEND_AT = 9 * 3600 + 2 * 60; // 9:02:00 - leaves ~5 minutes before pre-ope
 if (!DRY && secs() > 9 * 3600 + 7 * 60 + 30) { console.log('Too late for pre-open today.'); process.exit(0); }
 // liquidity + overnight news while we wait
 const turnover = new Map();
+const yRet = new Map(); // yesterday's close vs the day before
 for (let iso = prevDay(today), n = 0; n < 20; iso = prevDay(iso), n++) {
   const [y, m, d] = iso.split('-');
   const csv = await fetchCached(`https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_${d}${m}${y}.csv`, { ttlHours: 1e7, attempts: 2 }).catch(() => null);
   if (!csv?.startsWith('SYMBOL')) continue;
   const lines = csv.trim().split(/\r?\n/), head = lines[0].split(',').map((x) => x.trim()), c = (k) => head.indexOf(k);
+  if (n === 0) for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if ((p[c('SERIES')] === 'EQ' || p[c('SERIES')] === 'BE') && +p[c('PREV_CLOSE')] > 0) yRet.set(p[c('SYMBOL')], +p[c('CLOSE_PRICE')] / +p[c('PREV_CLOSE')] - 1); }
   for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if (p[c('SERIES')] === 'EQ' || p[c('SERIES')] === 'BE') (turnover.get(p[c('SYMBOL')]) ?? turnover.set(p[c('SYMBOL')], []).get(p[c('SYMBOL')])).push(+p[c('TURNOVER_LACS')] / 100); }
 }
 const cr = new Map([...turnover].map(([s, a]) => [s, median(a)]));
@@ -148,6 +153,13 @@ function choose(pre) {
     if (g == null || g < RULE.gapGo[0] || g >= RULE.gapGo[1] || (cr.get(c.symbol) ?? 0) < 5) continue;
     add(c.symbol, 'Gap & Go', 85 + Math.min(5, Math.min(c.qoq, c.yoy) * 5), `result: profit ${pct(c.qoq)} vs last quarter, ${pct(c.yoy)} vs last year; opening ${pct(g)}`, { exit: 'fixed', stop: 0.03, target: 0.07 });
   }
+  // 4. bounce-back (research/22: fell 3%+ yesterday, opens -3..-5% again, no bad news, Rs 5 cr+/day; +0.94% a day on days with
+  //    no other pick, positive in every half-year since 2025). Only with a PRE-OPEN fill: 1% worse entry = no edge.
+  for (const [s2, q] of pre) {
+    const g = gapOf(s2), y = yRet.get(s2);
+    if (g == null || y == null || y > -0.03 || g > -0.03 || g <= -0.0495 || (cr.get(s2) ?? 0) < 5 || badNews.has(s2)) continue;
+    add(s2, 'Bounce-back', 60 + Math.min(3, (cr.get(s2) ?? 0) / 100), `fell ${pct(y)} yesterday, opening ${pct(g)} again, no bad news - these usually bounce`, { exit: 'fixed', stop: 0.03, target: 0.07 });
+  }
   // 3. strong news (Claude-graded morning list)
   const np = row.news?.picks?.date === today ? row.news.picks : null;
   for (const w of np?.watch ?? []) {
@@ -159,9 +171,10 @@ function choose(pre) {
   const ranked = cands.sort((a, b) => b.score - a.score).filter((c) => !seen.has(c.symbol) && seen.add(c.symbol));
   return { marketGap, ranked };
 }
-// Very strong = Panic rebound HIGH or Gap & Go (score 85+). If any very strong stock exists, send only those (up to 3,
-// panic first, then Gap & Go). Only when there is none do strong-news stocks go out (up to 3, most traded first).
-const pickFrom = (ranked) => { const vs = ranked.some((c) => c.score >= 85); return ranked.filter((c) => !vs || c.score >= 85); };
+// Only the top level present goes out (up to 3): very strong = Panic rebound HIGH / Gap & Go (85+), then strong news (70+),
+// then bounce-back (60+, half money) on days with nothing else.
+const tierOf = (score) => (score >= 85 ? 3 : score >= 70 ? 2 : 1);
+const pickFrom = (ranked) => { const top = Math.max(0, ...ranked.map((c) => tierOf(c.score))); return ranked.filter((c) => tierOf(c.score) === top); };
 
 // ---- 4. Claude double-checks each pick in seconds: any red flag in the news? ----
 const VerdictSchema = z.object({ verdict: z.enum(['BUY', 'AVOID']), reason: z.string() });
@@ -194,14 +207,14 @@ const picks = pickFrom(ranked).filter((c) => checks.get(c.symbol)?.verdict !== '
 log(`market ${pct(marketGap)}, candidates: ${ranked.map((c) => `${c.symbol}(${c.kind} ${c.score.toFixed(0)})`).join(', ') || 'none'}; Claude avoided: ${avoided.map(([s, v]) => `${s} (${v.reason})`).join(', ') || 'none'}`);
 
 const sellText = (p) => p.exit === 'trail' ? `when it falls 1.5% from its best (you get SELL NOW), or at ₹${p.stopPrice}` : `${p.targetPrice ? `UP at ₹${p.targetPrice} or ` : ''}DOWN at ₹${p.stopPrice}, else at 3:20 pm`;
-best = { ...best, date: today, picks: picks.map(({ symbol, kind, why, gap, iep, limit, exit, stop, target, score }) => ({ symbol, kind, why, gap, iep, limit, exit, stop, target, level: score >= 85 ? 3 : 2, check: checks.get(symbol)?.reason, stopPrice: round(iep * (1 - stop)), targetPrice: target ? round(iep * (1 + target)) : null })).map((p) => ({ ...p, sell: sellText(p) })), avoided: avoided.map(([s, v]) => ({ symbol: s, reason: v.reason })), marketGap, sent: true, scored: false, generated: new Date().toISOString() };
+best = { ...best, date: today, picks: picks.map(({ symbol, kind, why, gap, iep, limit, exit, stop, target, score }) => ({ symbol, kind, why, gap, iep, limit, exit, stop, target, level: tierOf(score), check: checks.get(symbol)?.reason, stopPrice: round(iep * (1 - stop)), targetPrice: target ? round(iep * (1 + target)) : null })).map((p) => ({ ...p, sell: sellText(p) })), avoided: avoided.map(([s, v]) => ({ symbol: s, reason: v.reason })), marketGap, sent: true, scored: false, generated: new Date().toISOString() };
 const publish = async () => { if (!DRY) { await publishNews('best', best); await publishNews('final', { date: today, sent: true, picks: best.picks }); } };
 await publish();
 const out = best.picks;
 const avoidNote = avoided.length ? `\n\nClaude removed: ${avoided.map(([s, v]) => `${s} (${v.reason})`).join('; ')}` : '';
 if (out.length) {
   await notify(`BUY TODAY: ${out.map((p) => p.symbol).join(', ')} (before 9:07)`,
-    out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   Claude check: ${p.check}\n   BUY: limit ₹${p.limit} in pre-open NOW\n   SELL ${p.sell}`).join('\n\n') +
+    out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   Claude check: ${p.check}\n   BUY: limit ₹${p.limit} in pre-open NOW${p.level === 1 ? ' (HALF your usual money; only in pre-open, never after 9:15)' : ''}\n   SELL ${p.sell}`).join('\n\n') +
     `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. If it opens above your limit, you are not filled - do not chase. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
 } else if (TEST && ranked.length + [...pre.keys()].length) {
   const sample = [...pre.entries()].filter(([s]) => (cr.get(s) ?? 0) >= 20).map(([s, q]) => ({ symbol: s, kind: 'test', why: `opened ${pct(q.iep / q.prevClose - 1)} today`, g: q.iep / q.prevClose - 1 })).sort((a, b) => b.g - a.g)[0];
