@@ -14,7 +14,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // One request at a time per host, with a minimum gap between them.
 const gates = new Map();
-const GAP_MS = { 'www.nseindia.com': 450, 'query1.finance.yahoo.com': 250, 'www.screener.in': 3000 };
+const GAP_MS = { 'www.nseindia.com': 450, 'query1.finance.yahoo.com': 250, 'www.screener.in': 3000, 'www.bing.com': 1200 };
 // When a site says "slow down", every request to that site waits, not just the one that was refused.
 const pausedUntil = new Map();
 function gated(host, fn) {

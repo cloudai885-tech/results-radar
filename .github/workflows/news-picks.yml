@@ -1,0 +1,43 @@
+name: News picks (morning, paper test)
+on:
+  schedule:
+    # Morning list: read + grade overnight news (takes ~15-20 min). Several start times because GitHub timers run late.
+    - cron: '20 2 * * 1-5' # 7:50 am India time
+    - cron: '40 2 * * 1-5' # 8:10 am
+    - cron: '55 2 * * 1-5' # 8:25 am
+    # 9:30 check: which of them still hold above the open and yesterday's close -> BUY alert.
+    - cron: '1 4 * * 1-5'  # 9:31 am
+    - cron: '6 4 * * 1-5'  # 9:36 am
+    - cron: '12 4 * * 1-5' # 9:42 am
+  workflow_dispatch:
+    inputs:
+      step:
+        description: 'morning or confirm'
+        default: 'morning'
+
+concurrency:
+  group: news-picks
+  cancel-in-progress: false # later starts wait, then see the step is done and stop
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Pick the step from the time of day
+        id: step
+        run: |
+          if [ -n "${{ github.event.inputs.step }}" ]; then echo "step=${{ github.event.inputs.step }}" >> $GITHUB_OUTPUT; exit 0; fi
+          H=$(TZ=Asia/Kolkata date +%H%M)
+          if [ "$H" -lt 0925 ]; then echo "step=morning" >> $GITHUB_OUTPUT; else echo "step=confirm" >> $GITHUB_OUTPUT; fi
+      - run: node news-picks.mjs ${{ steps.step.outputs.step }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
