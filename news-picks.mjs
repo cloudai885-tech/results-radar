@@ -19,7 +19,7 @@ import { typeOf } from './research/news-types.mjs';
 import { publishNews } from './src/app-publish.mjs';
 
 const MODE = process.argv[2] ?? 'morning';
-const RULE = { minCr: 5, maxBuys: 3, trail: 0.02, target: 0.03, stop: 0.02, maxGap: 0.05, openGapMin: 0.05, openGapMax: 0.15, openTrail: 0.015, limitAbove: 0.005 };
+const RULE = { minCr: 5, maxBuys: 3, trail: 0.02, target: 0.03, stop: 0.02, maxGap: 0.05, openGapMin: 0.05, openGapMax: 0.15, openTrail: 0.015, limitAbove: 0.03 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const SIM = process.env.NEWS_DATE;
 const ist = () => new Date(Date.now() + 19800e3);

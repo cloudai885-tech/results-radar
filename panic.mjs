@@ -7,7 +7,7 @@ import { fetchCached, preOpen, preOpenSnapshot, announcements } from './src/sour
 import { categorise } from './research/categories.mjs';
 import { publishNews } from './src/app-publish.mjs';
 
-const RULE = { panicMarket: -0.012, highMinCr: 20, yFall: -0.03, gapMax: -0.03, gapMin: -0.05, minCr: 3, maxPicks: 3, stop: 0.03, target: 0.07, limitAbove: 0.005, capitalRs: 10000 };
+const RULE = { panicMarket: -0.012, highMinCr: 20, yFall: -0.03, gapMax: -0.03, gapMin: -0.05, minCr: 3, maxPicks: 3, stop: 0.03, target: 0.07, limitAbove: 0.03, capitalRs: 10000 };
 const BAD_NEWS = new Set(['result', 'legal', 'rating', 'fundraise']);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ist = () => new Date(Date.now() + 19800e3);
