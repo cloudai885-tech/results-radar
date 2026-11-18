@@ -6,8 +6,11 @@
 //      Sell at +7% or -3%, else 3:20 pm.
 //   3. Strong news (Claude-graded, morning list) and opens +5..+15%. One month: +1.2% a trade, 8 of 15 won.
 //      Sell when it falls 1.5% from its best (the live radar sends SELL NOW).
-//   4. Bounce-back, only when 1-3 have nothing: fell 3%+ yesterday, opens -3..-5% again, no bad news (research/22:
-//      +0.94% a day on such days, every half-year positive since 2025; needs the exact pre-open fill). Half money.
+//   4. Bounce-back, only when 1-3 have nothing: fell 3%+ yesterday, opens -3..-5% again, no bad news (research/22
+//      said +0.94% a day, but 94 of its 288 trades were T2T stocks that cannot be sold the same day. Without T2T:
+//      +0.29% a day since 2025, +0.76% a day in the last 6 months, 2 of 4 half-years flat or negative; needs the
+//      exact pre-open fill). The weakest level: half money.
+// T2T stocks (series BE) are never picked: they cannot be sold the same day (Nov 18 2026, HFCL).
 //      Sell at +7% or -3%, else 3:20 pm.
 // Only the top level of the day is sent: if one strategy is clearly stronger, only its stocks go out (often just 1).
 // Nothing strong -> "NO BUY TODAY". The month's tests showed forced trades on other days lose about 0.4% each.
@@ -102,11 +105,16 @@ if (!DRY && secs() > 9 * 3600 + 7 * 60 + 30) { console.log('Too late for pre-ope
 // liquidity + overnight news while we wait
 const turnover = new Map();
 const yRet = new Map(); // yesterday's close vs the day before
+// T2T stocks (NSE series "BE"): delivery only, cannot be sold the same day -> never pick them for intraday.
+// Taken from the newest bhavcopy we can read (Nov 18 2026: user got stuck holding HFCL overnight).
+const t2t = new Set();
+let gotLatest = false;
 for (let iso = prevDay(today), n = 0; n < 20; iso = prevDay(iso), n++) {
   const [y, m, d] = iso.split('-');
   const csv = await fetchCached(`https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_${d}${m}${y}.csv`, { ttlHours: 1e7, attempts: 2 }).catch(() => null);
   if (!csv?.startsWith('SYMBOL')) continue;
   const lines = csv.trim().split(/\r?\n/), head = lines[0].split(',').map((x) => x.trim()), c = (k) => head.indexOf(k);
+  if (!gotLatest) { gotLatest = true; for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if (p[c('SERIES')] === 'BE') t2t.add(p[c('SYMBOL')]); } }
   if (n === 0) for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if ((p[c('SERIES')] === 'EQ' || p[c('SERIES')] === 'BE') && +p[c('PREV_CLOSE')] > 0) yRet.set(p[c('SYMBOL')], +p[c('CLOSE_PRICE')] / +p[c('PREV_CLOSE')] - 1); }
   for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if (p[c('SERIES')] === 'EQ' || p[c('SERIES')] === 'BE') (turnover.get(p[c('SYMBOL')]) ?? turnover.set(p[c('SYMBOL')], []).get(p[c('SYMBOL')])).push(+p[c('TURNOVER_LACS')] / 100); }
 }
@@ -134,7 +142,7 @@ function choose(pre) {
   const cands = [];
   const add = (symbol, kind, score, why, rule) => {
     const p = pre.get(symbol), gap = gapOf(symbol);
-    if (!p?.iep || gap == null) return;
+    if (!p?.iep || gap == null || t2t.has(symbol)) return;
     cands.push({ symbol, kind, score, why, gap, iep: p.iep, limit: buyLimit(p.iep, p.prevClose, bands.get(symbol), RULE.limitAbove), ...rule });
   };
   // 1. panic rebound, HIGH level only (the normal level did not hold up)

@@ -78,15 +78,18 @@ const seen = new Set(state.seen);
 // ---- liquid stocks (median turnover of the last 10 sessions) ----
 const prevDay = (iso) => { let d = new Date(iso + 'T00:00:00Z'); do d = new Date(+d - 864e5); while (!isTradingDay(isoOf(d))); return isoOf(d); };
 const turnover = new Map();
+const t2t = new Set(); // NSE series "BE" = trade-to-trade: delivery only, no same-day sell -> never a BUY NOW
+let gotLatest = false;
 for (let iso = prevDay(today), n = 0; n < 10; iso = prevDay(iso), n++) {
   const [y, m, d] = iso.split('-');
   const csv = await fetchCached(`https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_${d}${m}${y}.csv`, { ttlHours: 1e7, attempts: 2 }).catch(() => null);
   if (!csv?.startsWith('SYMBOL')) continue;
   const lines = csv.trim().split(/\r?\n/), head = lines[0].split(',').map((x) => x.trim()), c = (k) => head.indexOf(k);
+  if (!gotLatest) { gotLatest = true; for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if (p[c('SERIES')] === 'BE') t2t.add(p[c('SYMBOL')]); } }
   for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if (p[c('SERIES')] === 'EQ' || p[c('SERIES')] === 'BE') (turnover.get(p[c('SYMBOL')]) ?? turnover.set(p[c('SYMBOL')], []).get(p[c('SYMBOL')])).push(+p[c('TURNOVER_LACS')] / 100); }
 }
-const liquid = new Map([...turnover].map(([s, a]) => [s, median(a)]).filter(([, cr]) => cr >= RULE.minCr));
-log(`${liquid.size} liquid stocks. ${state.trades.length} trades so far today.`);
+const liquid = new Map([...turnover].map(([s, a]) => [s, median(a)]).filter(([s, cr]) => cr >= RULE.minCr && !t2t.has(s)));
+log(`${liquid.size} liquid stocks (${t2t.size} T2T skipped). ${state.trades.length} trades so far today.`);
 
 // ---- live 1-minute candles (Yahoo) ----
 async function bars1(symbol) {
