@@ -32,7 +32,7 @@ async function bhav(iso) {
   for (const line of lines.slice(1)) {
     const p = line.split(',').map((x) => x.trim());
     if (p[c('SERIES')] !== 'EQ' && p[c('SERIES')] !== 'BE') continue;
-    map.set(p[c('SYMBOL')], { prev: +p[c('PREV_CLOSE')], open: +p[c('OPEN_PRICE')], high: +p[c('HIGH_PRICE')], low: +p[c('LOW_PRICE')], close: +p[c('CLOSE_PRICE')], cr: +p[c('TURNOVER_LACS')] / 100 });
+    map.set(p[c('SYMBOL')], { prev: +p[c('PREV_CLOSE')], open: +p[c('OPEN_PRICE')], high: +p[c('HIGH_PRICE')], low: +p[c('LOW_PRICE')], close: +p[c('CLOSE_PRICE')], cr: +p[c('TURNOVER_LACS')] / 100, t2t: p[c('SERIES')] === 'BE' });
   }
   return map;
 }
@@ -126,7 +126,7 @@ console.log(`Market opening ${pct(marketGap)} (${gaps.length} stocks). ${panicMo
 const candidates = [];
 for (const [symbol, y] of yday.data) {
   const p = pre.get(symbol);
-  if (!p?.iep || !y.prev) continue;
+  if (!p?.iep || !y.prev || y.t2t) continue; // T2T (series BE): no same-day sell, so never an intraday pick (HFCL, Nov 18 2026)
   const yRet = y.close / y.prev - 1, gap = p.iep / y.close - 1, liq = liqOf.get(symbol);
   if (gap > RULE.gapMax || gap <= RULE.gapMin + 0.0005) continue; // -5% is often the lower circuit: tested negative
   // HIGH: panic morning + big, heavily traded stock (tested on clean data: 10 of 10 days won, Jan 2025 - Nov 2026). NORMAL: fell 3%+ yesterday too (watch only).
