@@ -260,30 +260,64 @@ function renderNews() {
     ${all.slice(-12).reverse().map((x) => `<div class="track-row"><span>${esc(x.d.slice(5))} · <b>${esc(x.symbol)}</b> <span style="color:var(--muted)">${x.kind}</span></span>${plain(x.result)}</div>`).join('')}
     <p class="note">After charges. Use real money only if this stays green for a few weeks.</p></div>` : '';
   const when = n.updated ? new Date(n.updated).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : null;
-  // ---- TODAY'S BUY: the one list to act on (morning picks at ~9:05 + live BUY NOW), max 3 a day ----
-  const f = n.final?.date === today ? n.final : null;
-  const LEVEL = { 3: ['Very strong', 'r-excellent'], 2: ['Strong', 'r-good'], 1: ['Medium · small money', 'r-max'] };
-  const buys = [...(f?.picks ?? []).map((x, i) => newsCard((LEVEL[x.level] ?? LEVEL[2])[1], `${i + 1}. ${x.symbol}`, x.why, `<b>₹${esc(x.limit)}</b><span>buy limit</span>`, (LEVEL[x.level] ?? LEVEL[2])[0],
-      `<ol class="simple"><li><b>BUY: limit ₹${esc(x.limit)}</b><span>in pre-open, before 9:07 am. Opens above it? Not filled - do not chase.</span></li><li><b>SELL ${esc(x.sell)}</b><span>${esc(x.kind)} · intraday only, never hold overnight</span></li></ol>`)),
-    ...(l?.trades ?? []).map((t) => { const sold = t.ret != null; return newsCard(sold ? (t.ret >= 0 ? 'r-excellent' : 'r-bad') : 'r-good', `${t.symbol} · live`, t.why,
-      sold ? `${plain(t.ret)}<span>result</span>` : `<b>₹${esc(t.px.toFixed(1))}</b><span>bought ${esc(t.at)}</span>`, sold ? 'Sold' : 'Holding',
-      `<ol class="simple"><li><b>BUY at ${esc(t.at)} · ₹${esc(t.px.toFixed(2))}</b><span>news at ${esc(t.newsAt?.slice(0, 5))}, strength ${esc(t.strength)}/10</span></li>${sold ? `<li><b>Sold at ${esc(t.exitAt)} · ₹${esc(t.exit.toFixed(2))}</b><span>${esc(t.how)} · ${esc(pct(t.ret))} after charges</span></li>` : '<li><b>SELL when it falls 1.5% from its best</b><span>SELL NOW comes on the phone</span></li>'}</ol>`); })].join('');
-  const todayBuy = `<div class="day-head"><h2>🎯 Today's buy</h2><span>max 3 a day</span></div>` +
-    (buys || `<p class="empty small">${f ? 'No strong signal this morning: no buy. Keeping cash on weak days is part of the strategy. The live radar keeps watching news until 2:45 pm.' : 'Comes at about 9:05 am. Live BUY NOW can come any time 9:15 am - 2:45 pm.'}</p>`);
-  const details = section('🚀', 'Buy now (live)', 'Strong news came out during the day. Alert sent within seconds.', live, 'No BUY NOW yet today. Strong news does not come every day.') +
-    section('🌅', 'Buy at open', 'Strong overnight news, and buyers rushing in before 9:08 am (pre-open +5% or more).', open, p?.preopenDone ? 'None today: no strong-news stock opened +5% or more.' : 'Comes at 9:04-9:08 am.') +
-    section('✅', 'Buy at 9:30', "Strong overnight news, still above its open and yesterday's close at 9:30.", at930, p?.confirmed ? 'None today: none of them held up at 9:30.' : 'Comes at 9:31 am.') +
-    section('🎯', 'Gap & Go (results)', 'Results beat last quarter AND last year, and the stock opens 5-20% up: buy at the open.', gapRows, g ? 'No GO today.' : 'Watch list 8:30 am, GO list 9:03 am.') +
-    section('📉', 'Panic rebound', 'Fell 3%+ yesterday and opens 3-5% down again with no bad news: it usually bounces back during the day. HIGH = whole market panicking.', panic, pr ? `None today. Market opening ${pct(pr.marketGap ?? 0)}.` : 'Comes at about 9:04 am.') +
-    section('👀', 'Good news - just watch', 'Good news, but no buy signal. Do not buy these on your own.', box(good), p ? 'No strong good news overnight.' : 'The morning list comes at 7:50-8:25 am.') +
-    section('⛔', 'Bad news - avoid or sell', 'If you hold one of these, think about selling.', box(bad), 'No bad news found.');
-  el.innerHTML = `<div class="hero r-excellent"><small>One list · paper test</small>
-      <p style="margin:6px 0 0">Every morning at <b>9:05</b>: the strongest 1-3 stocks for today, with the price to buy and when to sell. Your phone gets it first.</p></div>` +
-    todayBuy +
-    (bad ? section('⛔', 'Bad news', 'Sell if you hold one of these.', box(bad), '') : '') +
-    section('📊', 'Scorecard', 'Every paper trade so far, after charges.', score, 'No finished trades yet. Results show after the first trading day.') +
-    `<details class="more" style="margin-top:20px"><summary>All signals (details) ${CHEVRON}</summary>${details}</details>` +
-    (when ? `<p class="note" style="text-align:center">News updated ${esc(when)}${p?.mode === 'keyword' ? ' · rough keyword reading (no Claude key)' : ''}</p>` : '');
+  el.innerHTML = answerBox(n, today, l) +
+    (bad ? `<details class="more fold"><summary>⛔ Bad news (${(l?.badNews ?? []).length + (p?.bad ?? []).filter((s) => !liveBad.has(s)).length}) · sell if you hold one ${CHEVRON}</summary>${box(bad)}</details>` : '') +
+    section('📊', 'Scorecard', 'Every TODAY’S BUY and BUY NOW trade so far, after charges.', score, 'No finished trades yet.') +
+    watchOnly(n, today, { live, open, at930, gapRows, panic, good, p, g, pr }) +
+    (when ? `<p class="note" style="text-align:center">Live data updated ${esc(when)}${p?.mode === 'keyword' ? ' · rough keyword reading (no Claude key)' : ''}</p>` : '');
+}
+
+// ---- The one box that answers "what do I do today?" ----
+const istMin = () => { const d = new Date(Date.now() + 19800e3); return d.getUTCHours() * 60 + d.getUTCMinutes(); };
+function answerBox(n, today, l) {
+  const now = istMin(), dow = new Date(Date.now() + 19800e3).getUTCDay();
+  const b = n.best?.date === today ? n.best : null, f = n.final?.date === today ? n.final : null;
+  const picks = f?.picks ?? b?.picks ?? [];
+  const cancelled = b?.cancelled ?? [], avoided = b?.avoided ?? [];
+  const liveTrades = l?.trades ?? [];
+  const closed = now >= 15 * 60 + 30;
+  const card = (cls, tag, title, body) => `<section class="answer ${cls}"><small>${esc(tag)}</small><h2>${title}</h2>${body}</section>`;
+  const line = (k, v) => `<div class="kv"><span>${esc(k)}</span><b>${v}</b></div>`;
+
+  let main;
+  if (dow === 0 || dow === 6) main = card('r-none', 'Today', 'Market closed', '<p>Weekend. The next buy list comes at 9:02 am on the next market day.</p>');
+  else if (!b && now < 9 * 60 + 2) main = card('r-good', 'Today · waiting', '⏳ Wait for 9:02 am', '<p>The buy list comes at <b>9:02 am</b> on your phone and here. <b>Do not buy anything before it.</b></p>');
+  else if (!b && !liveTrades.length) main = card('r-none', 'Today', 'No list today', '<p>The morning check did not run (holiday, or NSE did not answer). <b>No buy.</b></p>');
+  else if (picks.length) {
+    const half = picks.some((x) => x.level === 1);
+    main = card('r-excellent', `Today's buy · ${picks.length} stock${picks.length > 1 ? 's' : ''}`, `✅ BUY ${picks.map((x) => esc(x.symbol)).join(' + ')}`,
+      picks.map((x) => `<div class="pick"><div class="pick-head"><b>${esc(x.symbol)}</b><span>${esc(x.kind)}${x.level === 1 ? ' · HALF money' : ''}</span></div>
+        ${line('1. Buy (limit order)', `₹${esc(x.limit)} <em>before 9:07 am</em>`)}
+        ${x.targetPrice ? line('2. Sell UP at', `<span class="pos">₹${esc(x.targetPrice)}</span>`) : line('2. Sell when', '<span class="pos">it falls 1.5% from its best</span>')}
+        ${line(x.targetPrice ? '3. Sell DOWN at' : '3. Or DOWN at', `<span class="neg">₹${esc(x.stopPrice)}</span>`)}
+        ${line('4. Otherwise sell at', '3:20 pm')}
+        <p class="why">${esc(x.why)}</p></div>`).join('') +
+      `<p class="rule">${picks.length > 1 ? `Split your money equally. ` : ''}${half ? 'HALF money on the one marked. ' : ''}Opens above the limit? You are not bought — <b>do not chase</b>. Not bought by 9:15? Cancel the order.</p>`);
+  } else main = card('r-none', "Today's buy", '🚫 NO BUY TODAY', `<p><b>Keep your money.</b> Nothing was strong enough this morning${b?.marketGap != null ? ` (market opened ${esc(pct(b.marketGap))})` : ''}. On weak days not trading is the winning move.</p>`);
+
+  const notes = [
+    ...cancelled.map((c) => `<li class="neg"><b>${esc(c.symbol)} cancelled</b> — pre-open moved to ${esc(c.gap != null ? pct(c.gap) : '?')}. Do not buy it.</li>`),
+    ...avoided.map((a) => `<li class="neg"><b>${esc(a.symbol)} removed</b> by the news check — ${esc(a.reason)}</li>`),
+  ];
+  const live = liveTrades.map((t) => { const sold = t.ret != null; return `<li><b>🚀 ${esc(t.symbol)}</b> BUY NOW at ${esc(t.at)} ₹${esc(t.px.toFixed(2))} — ${sold ? `sold ${esc(t.exitAt)}, ${plain(t.ret)}` : '<b>holding</b>: SELL NOW comes on your phone'}</li>`; });
+  const extra = (notes.length || live.length ? `<ul class="answer-notes">${[...live, ...notes].join('')}</ul>` : '') +
+    `<p class="note">${closed ? 'Market closed. Today’s results go into the scorecard tomorrow morning.' : 'Live BUY NOW alerts can still come on strong news until 2:45 pm.'} <b>Only buy what is in this box.</b></p>`;
+  return main.replace(/<\/section>$/, `${extra}</section>`);
+}
+
+// ---- Everything else: watch only, folded away so it never looks like a buy ----
+function watchOnly(n, today, s) {
+  const cancelled = new Set((n.best?.date === today ? n.best.cancelled ?? [] : []).map((c) => c.symbol));
+  const mark = (html) => html.replace(/9:30 buy|At open|HIGH|Watch/g, 'Watch only').replace(/Limit buy/g, 'Test rule: limit')
+    .replace(/Bought ~/g, 'Price ~').replace(/<span>opening<\/span>/g, '<span>pre-open 9:02</span>');
+  const body = `<p class="note" style="margin:0 2px 8px">These are for learning and testing. <b>Do not buy them</b> unless they also appear in the box at the top.</p>` +
+    section('🌅', 'Opening strong on news', 'Strong overnight news and pre-open +5% or more.', mark(s.open), s.p?.preopenDone ? 'None today.' : 'Comes at 9:04-9:08 am.') +
+    section('✅', 'Still strong at 9:30', "Strong overnight news, still above its open at 9:30.", mark(s.at930), s.p?.confirmed ? 'None today.' : 'Comes at 9:31 am.') +
+    section('🎯', 'Gap & Go (results)', 'Results beat last quarter AND last year, stock opens 5-20% up.', s.gapRows, s.g ? 'No GO today.' : 'Watch list 8:30 am, GO list 9:03 am.') +
+    section('📉', 'Panic rebound', 'Fell 3%+ yesterday, pre-open 3-5% down again. Prices shown are from 9:02 am pre-open, not the real open.', mark(s.panic), s.pr ? `None today. Market opening ${pct(s.pr.marketGap ?? 0)}.` : 'Comes at about 9:04 am.') +
+    section('👀', 'Good news', 'Good news, but no buy signal.', box(s.good), s.p ? 'No strong good news overnight.' : 'The morning list comes at 7:50-8:25 am.');
+  const withCancel = [...cancelled].reduce((h, sym) => h.replaceAll(`<b>${sym}</b>`, `<b>${sym} <span class="neg">· cancelled</span></b>`), body);
+  return `<details class="more fold"><summary>👀 Watch only — do not buy ${CHEVRON}</summary>${withCancel}</details>`;
 }
 
 function renderGapGo() {
@@ -343,7 +377,10 @@ async function load() {
     document.getElementById('days').innerHTML = '<p class="empty">No ratings yet. Check back after the next update.</p>';
     return;
   }
-  updated.textContent = `Updated ${new Date(data.generated).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}`;
+  // Show the newest time: live news data during the day, the evening ratings otherwise.
+  const newest = [data.news?.updated, data.generated].filter(Boolean).map((x) => new Date(x)).sort((a, b) => b - a)[0];
+  const sameDay = newest && new Date(+newest + 19800e3).toISOString().slice(0, 10) === istToday();
+  updated.textContent = newest ? `${sameDay ? 'Today' : newest.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })} · updated ${newest.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })}` : 'Loading...';
   renderSide();
   renderFilters();
   renderDays();

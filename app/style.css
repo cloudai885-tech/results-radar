@@ -137,3 +137,25 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .simple { margin: 10px 0 0; padding-left: 22px; display: grid; gap: 8px; }
 .simple li b { display: block; font-size: 16px; }
 .simple li span { color: var(--muted); font-size: 12px; }
+
+/* Today tab: one answer box at the top */
+.answer { border: 2px solid var(--c); background: linear-gradient(160deg, var(--c-bg), var(--surface)); border-radius: 18px; padding: 16px; margin-top: 4px; }
+.answer small { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.answer h2 { margin: 4px 0 8px; font-size: 26px; line-height: 1.15; letter-spacing: -0.02em; color: var(--c); }
+.answer p { margin: 8px 0; }
+.pick { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 10px 0; }
+.pick-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.pick-head b { font-size: 20px; }
+.pick-head span { color: var(--muted); font-size: 12px; text-align: right; }
+.kv { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.kv span { color: var(--muted); }
+.kv b { font-size: 17px; text-align: right; }
+.kv em { display: block; font-style: normal; font-size: 11px; color: var(--muted); font-weight: 500; }
+.why { color: var(--muted); font-size: 12px; margin: 8px 0 0 !important; }
+.rule { font-size: 13px; background: var(--surface-2); border-radius: 10px; padding: 9px 12px; }
+.answer-notes { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; font-size: 14px; }
+.answer-notes li { background: var(--surface); border-radius: 10px; padding: 8px 10px; }
+.answer-notes li.neg b { color: var(--down); }
+.answer-notes li.neg { color: var(--text); }
+.fold { margin-top: 14px; }
+.fold > summary { justify-content: space-between; border-style: solid; background: var(--surface); color: var(--text); font-size: 14px; padding: 12px 14px; }
