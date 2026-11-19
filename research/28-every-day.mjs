@@ -239,6 +239,18 @@ if (process.env.SMALLDIP) {
   for (const x of per.slice(-12)) console.log(`  ${x.d}  ${x.t.map((z) => `${z.s} ${pct(z.v)}`).join(', ')} | day ${pct(x.v)}`);
   process.exit(0);
 }
+// EXPORT=1: every pick the live system would make (main picks, else Bounce-back at Rs 1 cr+, companies only),
+// with its real opening price and exit rule, for the timeframe test (research/32).
+if (process.env.EXPORT) {
+  const outPicks = [];
+  for (const x of days) {
+    if (x.n) { for (const t of x.picks) { const r = x.m.get(t.s); if (!r) continue; const k = t.kind; outPicks.push({ d: x.d, s: t.s, kind: k, prev: r[1], open: r[2], high: r[3], low: r[4], close: r[5], stop: k === 'Strong news' ? 0.02 : 0.03, target: k === 'Gap & Go' ? 0.07 : null }); } continue; }
+    for (const [s, r] of pick(x, LEVELS.bounce, 1)) outPicks.push({ d: x.d, s, kind: 'Bounce-back', prev: r[1], open: r[2], high: r[3], low: r[4], close: r[5], stop: 0.03, target: 0.07 });
+  }
+  fs.writeFileSync(new URL('live-picks.json', R), JSON.stringify(outPicks));
+  console.log(`exported ${outPicks.length} picks, ${new Set(outPicks.map((p) => p.d)).size} days`);
+  process.exit(0);
+}
 // picks of the last ~55 days at the lowest limits, for the 5-minute fill check
 const recentPicks = [];
 for (const x of days.filter((x) => x.d >= '2026-08-25' && !x.n)) {
