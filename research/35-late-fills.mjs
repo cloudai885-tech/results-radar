@@ -18,6 +18,33 @@ const mean = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : NaN);
 const pct = (v, d = 2) => (Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${(v * 100).toFixed(d)}%` : '   -  ');
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 
+// LIMITS=1: bought AT THE OPEN, by opening level, after a 3%+ fall yesterday (what a higher limit would add)
+if (process.env.LIMITS) {
+  const buckets = [['opened -3..-5% (now)', -0.0495, -0.03], ['opened -2..-3% (limit at -2%)', -0.03, -0.02], ['opened -1..-2% (limit at -1%)', -0.02, -0.01], ['opened -1..0%', -0.01, 0]];
+  const res = new Map(buckets.map((b) => [b[0], new Map()]));
+  for (const [s, rows] of Object.entries(mk.stocks)) {
+    if (ETFS.has(s) || !hourly[s]) continue;
+    for (let k = 21; k < rows.length; k++) {
+      const r = rows[k], d = mk.days[r[0]], y = rows[k - 1];
+      if (d < '2025-01-01' || y[0] !== r[0] - 1) continue;
+      const cr = median(rows.slice(k - 20, k).map((x) => x[6])); if (!(cr >= 1)) continue;
+      if (y[5] / y[1] - 1 > -0.03) continue;
+      const gap = r[2] / r[1] - 1, b = buckets.find(([, lo, hi]) => gap > lo && gap <= hi); if (!b) continue;
+      const bars = hourly[s][d]; if (!bars?.length) continue;
+      const last = bars.filter((x) => x[0] < 1530).at(-1); if (!last) continue;
+      const sc = r[5] / last[4], B = bars.filter((x) => x[0] < 1520).map(([t, o, h, l, c]) => [t, o * sc, h * sc, l * sc, c * sc]);
+      const px = r[2]; let ret = null;
+      for (const x of B) { if (x[3] <= px * 0.97) { ret = -0.03; break; } if (x[2] >= px * 1.07) { ret = 0.07; break; } }
+      if (ret == null) ret = B.at(-1)[4] / px - 1;
+      const m = res.get(b[0]); (m.get(d) ?? m.set(d, []).get(d)).push({ cr, r: ret - COST });
+    }
+  }
+  for (const [lab, m] of res) {
+    const t = [...m].flatMap(([d, l]) => l.sort((a, b) => b.cr - a.cr).slice(0, 3).map((x) => ({ d, r: x.r })));
+    console.log(`  ${lab.padEnd(32)} ${String(t.length).padStart(4)} trades on ${String(m.size).padStart(3)} days | avg ${pct(mean(t.map((x) => x.r)))} | won ${pct(t.filter((x) => x.r > 0).length / t.length, 0)} | 2025 ${pct(mean(t.filter((x) => x.d < '2026').map((x) => x.r)))} | 2026 ${pct(mean(t.filter((x) => x.d >= '2026').map((x) => x.r)))}`);
+  }
+  process.exit(0);
+}
 const late = [], onTime = [];
 const byDayLate = new Map(), byDayOn = new Map();
 for (const [s, rows] of Object.entries(mk.stocks)) {

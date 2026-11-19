@@ -25,7 +25,7 @@
 //   node best-pick.mjs           start it early (GitHub timers can run an hour late); it waits, decides at 9:05:30,
 //                                Claude checks each pick for red flags (seconds) and sends. No CANCEL messages: the
 //                                limit price itself keeps each order inside its range (Panic / Bounce-back: limit at
-//                                -3% from yesterday's close, so a stock that bounces back before the open is not bought;
+//                                -2% from yesterday's close, so a stock that bounces back more than that before the open is not bought;
 //                                Gap & Go / news: never above the top of the range or the circuit).
 // Also scores yesterday's picks first (5-minute candles) and keeps the record for the app (row 1, news.best).
 import { fetchCached, preOpen, announcements, holidays, etfList, priceBands, buyLimit } from './src/sources.mjs';
@@ -161,11 +161,13 @@ function choose(pre) {
   const add = (symbol, kind, score, why, rule) => {
     const p = pre.get(symbol), gap = gapOf(symbol);
     if (!p?.iep || gap == null || t2t.has(symbol) || etfs.has(symbol)) return; // companies only: no ETFs (SILVERBEES etc.)
-    // the limit keeps the order inside the strategy's range, so no CANCEL message is needed if the price moves before 9:10
+    // the limit keeps the order inside a tested range, so no CANCEL message is needed if the price moves before 9:10.
+    // Panic / Bounce-back: limit at yesterday's close -2% (research/35: opened -3..-5% +0.90% a trade, opened -2..-3%
+    // still +0.27% in 2025 and 2026, opened -1..-2% -0.34%), so a stock that bounces only a little is still bought.
     const tick = (v) => Math.floor(v * 20 + 1e-6) / 20;
     const down = kind === 'Panic rebound' || kind === 'Bounce-back';
     const top = kind === 'Gap & Go' ? RULE.gapGo[1] : RULE.newsGap[1];
-    const limit = down ? tick(p.prevClose * (1 + RULE.panicGap[1])) : Math.min(buyLimit(p.iep, p.prevClose, bands.get(symbol), RULE.limitAbove), tick(p.prevClose * (1 + top)));
+    const limit = down ? tick(p.prevClose * (1 - 0.02)) : Math.min(buyLimit(p.iep, p.prevClose, bands.get(symbol), RULE.limitAbove), tick(p.prevClose * (1 + top)));
     cands.push({ symbol, kind, score, why, gap, iep: p.iep, limit, ...rule });
   };
   // 1. panic rebound, HIGH level only (the normal level did not hold up)
