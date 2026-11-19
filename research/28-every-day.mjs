@@ -172,6 +172,50 @@ for (const [bCr, dCr] of (process.env.LADDER ? JSON.parse(process.env.LADDER) : 
     P(`bounce Rs ${bCr}cr+, dip Rs ${dCr}cr+, slip ${(slip * 100).toFixed(2)}% | days traded ${traded.length}/${per.length} (last 6m ${rc.filter((p) => p.v != null).length}/${rc.length}) | avg/day ${pct(mean(traded.map((p) => p.v)))} | green days ${pct(traded.filter((p) => p.v > 0).length / traded.length, 0)} | worst drop ${pct(dd, 0)} | ${lv('main')} | ${lv('bounce')} | ${lv('dip')} | ${PER.map(([l, f]) => `${l} ${pct(mean(traded.filter((p) => f(p.d)).map((p) => p.v)))}`).join(' ')} | last 6m ${pct(mean(rc.filter((p) => p.v != null).map((p) => p.v)))}`);
   }
 }
+// PRINTFROM=YYYY-MM-DD: day-by-day list with the CURRENT live rules (main picks, else Bounce-back at Rs 1 cr+)
+if (process.env.PRINTFROM) {
+  for (const x of days.filter((x) => x.d >= process.env.PRINTFROM)) {
+    if (x.n) { console.log(`  ${x.d}  MAIN     ${x.picks.map((t) => `${t.s} (${t.kind}) ${pct(t.ret)}`).join(', ')} | day ${pct(x.day)}`); continue; }
+    const b = pick(x, LEVELS.bounce, 1);
+    if (!b.length) { console.log(`  ${x.d}  no trade (market opened ${pct(x.marketGap)})`); continue; }
+    const rets = b.map(([, r]) => exitRet(r, 0));
+    console.log(`  ${x.d}  BOUNCE   ${b.map(([s2, r], k) => `${s2} opened ${pct(r[2] / r[1] - 1)} -> ${pct(rets[k])}`).join(', ')} | day ${pct(mean(rets))}`);
+  }
+  process.exit(0);
+}
+// GRID=1 (step 29): variations of the only clue that has worked ("fell, opens down again, bounces"), judged ONLY on days
+// when the live system has nothing (no main pick and no Bounce-back at Rs 1 cr+). Chosen on TRAIN (2025-01..2025-10),
+// checked on TEST (2025-11..2026-11). Companies only (no ETF / T2T / results that day), Rs 1 cr+, top 3 most traded.
+if (process.env.GRID) {
+  const etf = /ETF|BEES$|IETF$|^LIQUID|^GILT|^MON100|^MAFANG|^HNGSNG|^NIFTY|^SENSEX|^(GOLD|SILVER)(CASE|SHARE|1|ADD|IETF)$|MOMENTUM|^MID150|^MOM(30|50|100)/;
+  const back = (i, s, n) => { const a = byDay[i - 1]?.get(s), b = byDay[i - n]?.get(s); return a && b ? a[5] / b[1] - 1 : null; };
+  const empty = days.filter((x) => !x.n && !pick(x, LEVELS.bounce, 1).length);
+  console.log(`Days with NO live trade: ${empty.length} of ${days.length} (TRAIN ${empty.filter((x) => x.d < '2025-11-01').length}, TEST ${empty.filter((x) => x.d >= '2025-11-01').length})`);
+  const EX = { 't7s3': [0.07, 0.03], 't4s2': [0.04, 0.02], 'close s3': [null, 0.03] };
+  const res = [];
+  for (const [fl, fn] of [['yday <= -2%', (i, s) => back(i, s, 1) <= -0.02], ['yday <= -5%', (i, s) => back(i, s, 1) <= -0.05], ['2 days <= -5%', (i, s) => back(i, s, 2) <= -0.05], ['5 days <= -8%', (i, s) => back(i, s, 5) <= -0.08], ['5 days <= -12%', (i, s) => back(i, s, 5) <= -0.12], ['any (no fall)', () => true]])
+    for (const [gl, g1, g2] of [['gap -1..-2%', -0.02, -0.01], ['gap -2..-3%', -0.03, -0.02], ['gap -3..-5%', -0.0495, -0.03], ['gap -1..-3%', -0.03, -0.01]])
+      for (const [ek, [tg, st]] of Object.entries(EX)) for (const minCr of [1, 5, 20]) {
+        const per = [];
+        for (const x of empty) {
+          const c = [...x.m].filter(([s, r]) => !etf.test(s) && r[1] > 0 && !x.results.has(s) && !beOn[x.i].has(s) && liq(x.i, s) >= minCr && r[2] / r[1] - 1 > g1 && r[2] / r[1] - 1 <= g2 && fn(x.i, s)).sort((a, b) => liq(x.i, b[0]) - liq(x.i, a[0])).slice(0, 3);
+          if (!c.length) continue;
+          const v = (slip) => mean(c.map(([, r]) => { const [, , o, h, l, cl] = r; const px = o * (1 + slip); return (l <= px * (1 - st) ? -st : tg && h >= px * (1 + tg) ? tg : cl / px - 1) - COST; }));
+          per.push({ d: x.d, v: v(0), v25: v(0.0025) });
+        }
+        const tr = per.filter((p) => p.d < '2025-11-01'), te = per.filter((p) => p.d >= '2025-11-01');
+        if (tr.length < 30) continue;
+        res.push({ k: `${fl} + ${gl} | ${ek} | Rs ${minCr}cr+`, ntr: tr.length, tr: mean(tr.map((p) => p.v)), nte: te.length, te: mean(te.map((p) => p.v)), te25: mean(te.map((p) => p.v25)), rc: mean(te.filter((p) => p.d >= '2026-05-17').map((p) => p.v)), halves: [['25H1', '2025-01', '2025-07'], ['25H2', '2025-07', '2026'], ['26H1', '2026', '2026-07'], ['26H2', '2026-07', '2027']].map(([, a, b]) => mean(per.filter((p) => p.d >= a && p.d < b).map((p) => p.v))) });
+      }
+  res.sort((a, b) => b.tr - a.tr);
+  console.log(`${res.length} variations. Top 25 by TRAIN (2025), then their TEST (last 12 months) - per day, after 0.4% costs:`);
+  for (const r of res.slice(0, 25)) console.log(`  ${r.k.padEnd(58)} TRAIN ${String(r.ntr).padStart(3)}d ${pct(r.tr)} | TEST ${String(r.nte).padStart(3)}d ${pct(r.te)} (0.25% worse ${pct(r.te25)}) | last 6m ${pct(r.rc)} | half-years +${r.halves.filter((h) => h > 0).length}/4`);
+  const good = res.filter((r) => r.tr > 0.002 && r.te > 0.002 && r.te25 > 0 && r.halves.every((h) => !(h < 0)));
+  for (const r of res.filter((r) => /^(any \(no fall\)|yday <= -2%) \+ gap -2\.\.-3% \| t7s3 \| Rs 1cr\+/.test(r.k))) console.log(`  DETAIL ${r.k}: 25H1 ${pct(r.halves[0])}, 25H2 ${pct(r.halves[1])}, 26H1 ${pct(r.halves[2])}, 26H2 ${pct(r.halves[3])}`);
+  console.log(`\nPassed ALL checks (TRAIN > +0.2%, TEST > +0.2%, still positive 0.25% worse, no negative half-year): ${good.length}`);
+  for (const r of good.sort((a, b) => b.nte - a.nte)) console.log(`  ${r.k.padEnd(58)} TRAIN ${r.ntr}d ${pct(r.tr)} | TEST ${r.nte}d ${pct(r.te)} (0.25% worse ${pct(r.te25)}) | last 6m ${pct(r.rc)}`);
+  process.exit(0);
+}
 // picks of the last ~55 days at the lowest limits, for the 5-minute fill check
 const recentPicks = [];
 for (const x of days.filter((x) => x.d >= '2026-08-25' && !x.n)) {
