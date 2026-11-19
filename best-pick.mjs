@@ -1,4 +1,6 @@
-// TODAY'S BUY: one message at about 9:02 am with the best 1-3 stocks of the day, from every tested strategy.
+// TODAY'S BUY: ONE message at about 9:05:30 am with the best 1-3 stocks of the day, from every tested strategy.
+// NSE pre-open since Sep 7 2026: orders 9:00-9:05 (any), 9:05 until a random close between 9:08 and 9:10 (limit only),
+// matching 9:10-9:12. Deciding at 9:05:30 uses prices much closer to the real open, and the user has until 9:08.
 // The user wants one clear answer, not many lists. Ranked by how well each strategy held up in testing:
 //   1. Panic rebound, HIGH level: whole market opens -1.2% or worse, a big stock (Rs 20 cr+/day) opens -3..-5%,
 //      no bad news overnight. 10 of 10 such days won (Jan 2025 - Nov 2026, small sample). Hold to 3:20 pm, stop -3%.
@@ -20,9 +22,11 @@
 // Only the top level of the day is sent: if one strategy is clearly stronger, only its stocks go out (often just 1).
 // Nothing strong -> "NO BUY TODAY". The month's tests showed forced trades on other days lose about 0.4% each.
 //
-//   node best-pick.mjs           start it early (GitHub timers can run an hour late); it waits, decides at 9:02:00,
-//                                Claude checks each pick for red flags (seconds), sends, then sends CANCEL until 9:06
-//                                if a pick's pre-open price leaves its range.
+//   node best-pick.mjs           start it early (GitHub timers can run an hour late); it waits, decides at 9:05:30,
+//                                Claude checks each pick for red flags (seconds) and sends. No CANCEL messages: the
+//                                limit price itself keeps each order inside its range (Panic / Bounce-back: limit at
+//                                -3% from yesterday's close, so a stock that bounces back before the open is not bought;
+//                                Gap & Go / news: never above the top of the range or the circuit).
 // Also scores yesterday's picks first (5-minute candles) and keeps the record for the app (row 1, news.best).
 import { fetchCached, preOpen, announcements, holidays, etfList, priceBands, buyLimit } from './src/sources.mjs';
 import { categorise } from './research/categories.mjs';
@@ -106,7 +110,7 @@ if (best.date && best.date < today && !best.scored && best.picks?.length) {
 if (!DRY && best.date === today && best.sent) { console.log('Already sent today.'); process.exit(0); }
 
 // ---- 2. wait for pre-open prices ----
-const SEND_AT = 9 * 3600 + 2 * 60; // 9:02:00 - leaves ~5 minutes before pre-open closes (random moment 9:07-9:08)
+const SEND_AT = 9 * 3600 + 5 * 60 + 30; // 9:05:30 - order entry closes at a random moment between 9:08 and 9:10
 if (!DRY && secs() > 9 * 3600 + 7 * 60 + 30) { console.log('Too late for pre-open today.'); process.exit(0); }
 // liquidity + overnight news while we wait
 const turnover = new Map();
@@ -157,7 +161,12 @@ function choose(pre) {
   const add = (symbol, kind, score, why, rule) => {
     const p = pre.get(symbol), gap = gapOf(symbol);
     if (!p?.iep || gap == null || t2t.has(symbol) || etfs.has(symbol)) return; // companies only: no ETFs (SILVERBEES etc.)
-    cands.push({ symbol, kind, score, why, gap, iep: p.iep, limit: buyLimit(p.iep, p.prevClose, bands.get(symbol), RULE.limitAbove), ...rule });
+    // the limit keeps the order inside the strategy's range, so no CANCEL message is needed if the price moves before 9:10
+    const tick = (v) => Math.floor(v * 20 + 1e-6) / 20;
+    const down = kind === 'Panic rebound' || kind === 'Bounce-back';
+    const top = kind === 'Gap & Go' ? RULE.gapGo[1] : RULE.newsGap[1];
+    const limit = down ? tick(p.prevClose * (1 + RULE.panicGap[1])) : Math.min(buyLimit(p.iep, p.prevClose, bands.get(symbol), RULE.limitAbove), tick(p.prevClose * (1 + top)));
+    cands.push({ symbol, kind, score, why, gap, iep: p.iep, limit, ...rule });
   };
   // 1. panic rebound, HIGH level only (the normal level did not hold up)
   const marketGap = median([...pre.keys()].filter((s) => (cr.get(s) ?? 0) >= 2).map(gapOf).filter((g) => g != null && g !== 0)); // 0 exactly = no pre-open trade yet (~15% of stocks), it would pull the reading toward 0
@@ -220,7 +229,7 @@ async function claudeCheck(c) {
   return res?.parsed_output ?? { verdict: 'BUY', reason: 'Claude did not answer in time - not checked' };
 }
 
-// ---- 5. decide at 9:02, send, then watch until 9:06 and cancel any pick that stops qualifying ----
+// ---- 5. decide at 9:05:30 and send (no follow-up CANCEL messages) ----
 let pre = await freshPreOpen();
 if (!pre) { await notify('TODAY: no pre-open prices', 'Could not read pre-open prices from NSE (holiday, or NSE not answering). No pick today.', 'default', 'warning'); process.exit(0); }
 let { marketGap, ranked } = choose(pre);
@@ -236,10 +245,10 @@ await publish();
 const out = best.picks;
 const avoidNote = avoided.length ? `\n\nClaude removed: ${avoided.map(([s, v]) => `${s} (${v.reason})`).join('; ')}` : '';
 if (out.length) {
-  await notify(`BUY TODAY: ${out.map((p) => p.symbol).join(', ')} (before 9:07)`,
+  await notify(`BUY TODAY: ${out.map((p) => p.symbol).join(', ')} (place before 9:08)`,
     out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   Claude check: ${p.check}\n   BUY: limit ₹${p.limit} in pre-open NOW${p.level === 1 ? ' (HALF your usual money; only in pre-open, never after 9:15)' : ''}${bands.get(p.symbol) != null && bands.get(p.symbol) <= 0.05 ? `
    ⚠ ${Math.round(bands.get(p.symbol) * 100)}% circuit stock: it can lock at the lower circuit (₹${round(p.iep / (1 + p.gap) * (1 - bands.get(p.symbol)))}) and then you cannot sell that day` : ''}\n   SELL ${p.sell}${p.atr ? `\n   (levels fit this stock: it usually moves ~${(p.atr * 100).toFixed(1)}% a day, so stop -${(p.stop * 100).toFixed(1)}%, target +${(p.target * 100).toFixed(1)}%)` : ''}`).join('\n\n') +
-    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. Limit is up to 3% above the pre-open price (never above the upper circuit), so you rarely miss. Paid more than the pre-open price? Keep the same stop distance (in %) below YOUR buy price. Not bought by 9:15? Cancel the order - never buy later. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
+    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. Place LIMIT orders before 9:08 (after 9:05 NSE takes only limit orders). The limit is the protection: if the price moves out of range before the open, the order simply does not fill - no cancel needed. Bought above the pre-open price? Keep the same stop distance (in %) below YOUR buy price. Not bought by 9:15? Cancel the order - never buy later.${avoidNote}`, 'urgent', 'rocket');
 } else if (TEST && ranked.length + [...pre.keys()].length) {
   const sample = [...pre.entries()].filter(([s]) => (cr.get(s) ?? 0) >= 20).map(([s, q]) => ({ symbol: s, kind: 'test', why: `opened ${pct(q.iep / q.prevClose - 1)} today`, g: q.iep / q.prevClose - 1 })).sort((a, b) => b.g - a.g)[0];
   const v = sample ? await claudeCheck(sample) : null;
@@ -247,19 +256,4 @@ if (out.length) {
 Claude check test on ${sample?.symbol}: ${v?.verdict} - ${v?.reason}`, 'default', 'zzz');
 } else {
   await notify('NO BUY TODAY', `Nothing strong this morning (market opening ${pct(marketGap)}). Not trading is the winning move today - forced trades lost money in testing.\nDuring the day the live radar may still send BUY NOW on fresh news.${avoidNote}`, 'default', 'zzz');
-}
-// pre-open prices keep moving until ~9:07: if a pick drops out of its range, tell the user to cancel that order
-while (!DRY && out.length && secs() < 9 * 3600 + 6 * 60 + 15) {
-  await sleep(20000);
-  const p2 = await preOpen(0).catch(() => null);
-  if (!p2) continue;
-  const still = new Set(choose(p2).ranked.map((c) => c.symbol));
-  for (const p of [...best.picks]) {
-    if (still.has(p.symbol)) continue;
-    const q = p2.get(p.symbol), g = q?.iep && q.prevClose ? q.iep / q.prevClose - 1 : null;
-    best.picks = best.picks.filter((x) => x.symbol !== p.symbol);
-    (best.cancelled ??= []).push({ symbol: p.symbol, gap: g });
-    await notify(`CANCEL ${p.symbol} - do not buy`, `${p.symbol} pre-open moved to ${g != null ? pct(g) : '?'}: it no longer fits ${p.kind}. Cancel your buy order now (before 9:07).${best.picks.length ? `\nStill buy: ${best.picks.map((x) => x.symbol).join(', ')}` : ''}`, 'urgent', 'x');
-    await publish();
-  }
 }

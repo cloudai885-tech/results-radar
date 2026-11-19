@@ -162,7 +162,7 @@ if (high.length) {
   const body = [`Whole market opening ${pct(marketGap)}: panic morning. Past record: 10 of 10 such days won (small sample).`,
     ...high.map((p) => `${p.symbol}: opening ${pct(p.gap)}. Pre-open BUY limit Rs ${p.limit} (${qty(p)}). Stop Rs ${p.stopPrice}, sell at 3:20 pm.`),
     `Check for bad news first.${newsNote}`].join(NL);
-  await notify(`HIGH CONFIDENCE: market panic, ${high.length} pick${high.length > 1 ? 's' : ''} (pre-open closes 9:07)`, body, 'min', 'green_circle'); // TODAY'S BUY (today-picks.mjs) sends it loud
+  await notify(`HIGH CONFIDENCE: market panic, ${high.length} pick${high.length > 1 ? 's' : ''} (pre-open closes 9:08-9:10)`, body, 'min', 'green_circle'); // TODAY'S BUY (today-picks.mjs) sends it loud
 } else if (normal.length) {
   const body = [...normal.map((p) => `${p.symbol}: yesterday ${pct(p.yRet)}, opening ${pct(p.gap)}. Pre-open BUY limit Rs ${p.limit} (${qty(p)}). Stop Rs ${p.stopPrice}, target Rs ${p.targetPrice}, else sell 3:20 pm.`),
     `NORMAL level: WATCH ONLY, no money.${newsNote}`].join(NL);
@@ -172,12 +172,12 @@ if (high.length) {
 }
 
 // ---- 4. save the pre-open book for future research (buy/sell quantities waiting at the auction) ----
-// One snapshot now (~9:05) and one after the auction has matched (~9:09:30, final opening prices). The workflow pushes
+// One snapshot now (~9:05) and one after the auction has matched (~9:12:30, final opening prices). The workflow pushes
 // data/preopen/ to the preopen-data branch. Never blocks the alert above.
 if (!SIM) {
   try {
     const earlyAt = new Date().toISOString(), early = await preOpenSnapshot();
-    while (nowMins() < 9 * 60 + 9 || (nowMins() === 9 * 60 + 9 && ist().getUTCSeconds() < 30)) await sleep(5000); // 9:09:30: matching is finished (at 9:08:37 on Nov 19 it was not)
+    while (nowMins() < 9 * 60 + 12 || (nowMins() === 9 * 60 + 12 && ist().getUTCSeconds() < 30)) await sleep(5000); // 9:12:30: since Sep 7 2026 NSE matches 9:10-9:12
     const finalAt = new Date().toISOString(), final = await preOpenSnapshot();
     fs.mkdirSync('data/preopen', { recursive: true });
     fs.writeFileSync(`data/preopen/${today}.json`, JSON.stringify({ early: { at: earlyAt, book: early }, final: { at: finalAt, book: final } }));
