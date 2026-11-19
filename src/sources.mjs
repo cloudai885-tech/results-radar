@@ -157,6 +157,12 @@ export async function preOpenSnapshot() {
   return out;
 }
 
+// NSE's official list of ETFs (gold, silver, index funds...): picks must be companies, not ETFs.
+export async function etfList(ttlHours = 24) {
+  const body = await fetchCached('https://nsearchives.nseindia.com/content/equities/eq_etfseclist.csv', { ttlHours, attempts: 3 });
+  return new Set(String(body ?? '').trim().split(String.fromCharCode(10)).slice(1).map((l) => l.split(',')[0].replace(/"/g, '').trim()).filter(Boolean));
+}
+
 export async function holidays() {
   const j = await nseJson('holiday-master?type=trading', 24 * 7);
   return new Set((j.CM ?? []).map((h) => isoFromNse(h.tradingDate)));

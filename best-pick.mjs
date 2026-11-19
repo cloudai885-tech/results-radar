@@ -8,8 +8,11 @@
 //      Sell when it falls 1.5% from its best (the live radar sends SELL NOW).
 //   4. Bounce-back, only when 1-3 have nothing: fell 3%+ yesterday, opens -3..-5% again, no bad news (research/22
 //      said +0.94% a day, but 94 of its 288 trades were T2T stocks that cannot be sold the same day. Without T2T:
-//      +0.29% a day since 2025, +0.76% a day in the last 6 months, 2 of 4 half-years flat or negative; needs the
-//      exact pre-open fill). The weakest level: half money.
+//      +0.29% a day since 2025 at Rs 5 cr+/day). Nov 19 2026, user's choice (research/28): Rs 1 cr+/day, about 1,600
+//      stocks instead of 1,100: +0.6% a day, a trade on ~105 of the last 125 days. Pre-open sellers are plentiful on
+//      down-gap mornings (Rs 11-21 lakh waiting even in Rs 1-2 cr stocks), so a Rs 12k buy fills at the open. Risk the
+//      user accepted: stocks with a 5% price band can lock at the lower circuit (~1-2 times a month a pick closes
+//      locked and cannot be sold that day); the message warns on those. Needs the exact pre-open fill. Half money.
 // T2T stocks (series BE) are never picked: they cannot be sold the same day (Nov 18 2026, HFCL).
 //      Sell at +7% or -3%, else 3:20 pm.
 // Only the top level of the day is sent: if one strategy is clearly stronger, only its stocks go out (often just 1).
@@ -19,7 +22,7 @@
 //                                Claude checks each pick for red flags (seconds), sends, then sends CANCEL until 9:06
 //                                if a pick's pre-open price leaves its range.
 // Also scores yesterday's picks first (5-minute candles) and keeps the record for the app (row 1, news.best).
-import { fetchCached, preOpen, announcements, holidays, priceBands, buyLimit } from './src/sources.mjs';
+import { fetchCached, preOpen, announcements, holidays, etfList, priceBands, buyLimit } from './src/sources.mjs';
 import { categorise } from './research/categories.mjs';
 import { publishNews } from './src/app-publish.mjs';
 import Anthropic from '@anthropic-ai/sdk';
@@ -52,6 +55,7 @@ const SB = !DRY && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY 
 const appRow = async () => (SB ? (await (await fetch(`${SB.url}?id=eq.1&select=payload`, { headers: { apikey: SB.key } })).json())?.[0]?.payload ?? {} : {});
 
 const hol = await holidays().catch(() => new Set());
+const etfs = await etfList().catch(() => new Set()); // NSE's official ETF list
 const isTradingDay = (iso) => { const d = new Date(iso + 'T00:00:00Z').getUTCDay(); return d !== 0 && d !== 6 && !hol.has(iso); };
 if (!isTradingDay(today)) { console.log(`${today} is not a trading day.`); process.exit(0); }
 const prevDay = (iso) => { let d = new Date(iso + 'T00:00:00Z'); do d = new Date(+d - 864e5); while (!isTradingDay(isoOf(d))); return isoOf(d); };
@@ -142,11 +146,11 @@ function choose(pre) {
   const cands = [];
   const add = (symbol, kind, score, why, rule) => {
     const p = pre.get(symbol), gap = gapOf(symbol);
-    if (!p?.iep || gap == null || t2t.has(symbol)) return;
+    if (!p?.iep || gap == null || t2t.has(symbol) || etfs.has(symbol)) return; // companies only: no ETFs (SILVERBEES etc.)
     cands.push({ symbol, kind, score, why, gap, iep: p.iep, limit: buyLimit(p.iep, p.prevClose, bands.get(symbol), RULE.limitAbove), ...rule });
   };
   // 1. panic rebound, HIGH level only (the normal level did not hold up)
-  const marketGap = median([...pre.keys()].filter((s) => (cr.get(s) ?? 0) >= 2).map(gapOf).filter((g) => g != null));
+  const marketGap = median([...pre.keys()].filter((s) => (cr.get(s) ?? 0) >= 2).map(gapOf).filter((g) => g != null && g !== 0)); // 0 exactly = no pre-open trade yet (~15% of stocks), it would pull the reading toward 0
   if (marketGap <= RULE.marketPanic) {
     for (const s of pre.keys()) {
       const g = gapOf(s);
@@ -166,7 +170,7 @@ function choose(pre) {
   //    no other pick, positive in every half-year since 2025). Only with a PRE-OPEN fill: 1% worse entry = no edge.
   for (const [s2, q] of pre) {
     const g = gapOf(s2), y = yRet.get(s2);
-    if (g == null || y == null || y > -0.03 || g > -0.03 || g <= -0.0495 || (cr.get(s2) ?? 0) < 5 || badNews.has(s2)) continue;
+    if (g == null || y == null || y > -0.03 || g > -0.03 || g <= -0.0495 || (cr.get(s2) ?? 0) < 1 || badNews.has(s2)) continue;
     add(s2, 'Bounce-back', 60 + Math.min(3, (cr.get(s2) ?? 0) / 100), `fell ${pct(y)} yesterday, opening ${pct(g)} again, no bad news - these usually bounce`, { exit: 'fixed', stop: 0.03, target: 0.07 });
   }
   // 3. strong news (Claude-graded morning list)
@@ -223,7 +227,8 @@ const out = best.picks;
 const avoidNote = avoided.length ? `\n\nClaude removed: ${avoided.map(([s, v]) => `${s} (${v.reason})`).join('; ')}` : '';
 if (out.length) {
   await notify(`BUY TODAY: ${out.map((p) => p.symbol).join(', ')} (before 9:07)`,
-    out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   Claude check: ${p.check}\n   BUY: limit ₹${p.limit} in pre-open NOW${p.level === 1 ? ' (HALF your usual money; only in pre-open, never after 9:15)' : ''}\n   SELL ${p.sell}`).join('\n\n') +
+    out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   Claude check: ${p.check}\n   BUY: limit ₹${p.limit} in pre-open NOW${p.level === 1 ? ' (HALF your usual money; only in pre-open, never after 9:15)' : ''}${bands.get(p.symbol) != null && bands.get(p.symbol) <= 0.05 ? `
+   ⚠ ${Math.round(bands.get(p.symbol) * 100)}% circuit stock: it can lock at the lower circuit (₹${round(p.iep / (1 + p.gap) * (1 - bands.get(p.symbol)))}) and then you cannot sell that day` : ''}\n   SELL ${p.sell}`).join('\n\n') +
     `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. Limit is up to 3% above the pre-open price (never above the upper circuit), so you rarely miss. Paid more than the pre-open price? Set your stop 3% below YOUR buy price. Not bought by 9:15? Cancel the order - never buy later. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
 } else if (TEST && ranked.length + [...pre.keys()].length) {
   const sample = [...pre.entries()].filter(([s]) => (cr.get(s) ?? 0) >= 20).map(([s, q]) => ({ symbol: s, kind: 'test', why: `opened ${pct(q.iep / q.prevClose - 1)} today`, g: q.iep / q.prevClose - 1 })).sort((a, b) => b.g - a.g)[0];

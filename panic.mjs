@@ -118,7 +118,7 @@ if (![...pre.values()].some((p) => p.time.startsWith(nseDay))) {
 const liqOf = new Map();
 for (const symbol of yday.data.keys()) liqOf.set(symbol, median(sessions.slice(0, 20).map((s) => s.data.get(symbol)?.cr ?? 0)));
 const gaps = [];
-for (const [symbol, y] of yday.data) { const p = pre.get(symbol); if (p?.iep && y.close && liqOf.get(symbol) >= 2) gaps.push(p.iep / y.close - 1); }
+for (const [symbol, y] of yday.data) { const p = pre.get(symbol); if (p?.iep && y.close && liqOf.get(symbol) >= 2 && p.iep !== p.prevClose) gaps.push(p.iep / y.close - 1); } // iep = prev close exactly: no pre-open trade yet
 const marketGap = median(gaps);
 const panicMorning = gaps.length > 200 && marketGap <= RULE.panicMarket;
 console.log(`Market opening ${pct(marketGap)} (${gaps.length} stocks). ${panicMorning ? 'PANIC MORNING' : 'normal morning'}`);
@@ -172,12 +172,12 @@ if (high.length) {
 }
 
 // ---- 4. save the pre-open book for future research (buy/sell quantities waiting at the auction) ----
-// One snapshot now (~9:05) and one after the auction closes (~9:08:45, final opening prices). The workflow pushes
+// One snapshot now (~9:05) and one after the auction has matched (~9:09:30, final opening prices). The workflow pushes
 // data/preopen/ to the preopen-data branch. Never blocks the alert above.
 if (!SIM) {
   try {
     const earlyAt = new Date().toISOString(), early = await preOpenSnapshot();
-    while (nowMins() < 9 * 60 + 8 || (nowMins() === 9 * 60 + 8 && ist().getUTCSeconds() < 45)) await sleep(5000);
+    while (nowMins() < 9 * 60 + 9 || (nowMins() === 9 * 60 + 9 && ist().getUTCSeconds() < 30)) await sleep(5000); // 9:09:30: matching is finished (at 9:08:37 on Nov 19 it was not)
     const finalAt = new Date().toISOString(), final = await preOpenSnapshot();
     fs.mkdirSync('data/preopen', { recursive: true });
     fs.writeFileSync(`data/preopen/${today}.json`, JSON.stringify({ early: { at: earlyAt, book: early }, final: { at: finalAt, book: final } }));
