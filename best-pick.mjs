@@ -3,7 +3,9 @@
 //   1. Panic rebound, HIGH level: whole market opens -1.2% or worse, a big stock (Rs 20 cr+/day) opens -3..-5%,
 //      no bad news overnight. 10 of 10 such days won (Jan 2025 - Nov 2026, small sample). Hold to 3:20 pm, stop -3%.
 //   2. Gap & Go: results beat last quarter AND last year, opens +5..+20%. 98 trades over 2 years, +1.2% a trade.
-//      Sell at +7% or -3%, else 3:20 pm.
+//      Nov 19 2026 (research/34): each stock gets its own levels from its usual daily range (ATR, last 14 sessions):
+//      stop 1.25x ATR, target 2x ATR (typical -4.6% / +7.4%), else 3:20 pm. Beat the fixed +7%/-3% in 2025 AND 2026
+//      (+0.72%/+0.57% vs +0.04%/+0.44% a trade). Without ATR data: -5% / +7%.
 //   3. Strong news (Claude-graded, morning list) and opens +5..+15%. One month: +1.2% a trade, 8 of 15 won.
 //      Sell when it falls 1.5% from its best (the live radar sends SELL NOW).
 //   4. Bounce-back, only when 1-3 have nothing: fell 3%+ yesterday, opens -3..-5% again, no bad news (research/22
@@ -109,6 +111,7 @@ if (!DRY && secs() > 9 * 3600 + 7 * 60 + 30) { console.log('Too late for pre-ope
 // liquidity + overnight news while we wait
 const turnover = new Map();
 const yRet = new Map(); // yesterday's close vs the day before
+const trueRange = new Map(); // symbol -> [{ tr, close }] newest first, for ATR (Gap & Go stop/target)
 // T2T stocks (NSE series "BE"): delivery only, cannot be sold the same day -> never pick them for intraday.
 // Taken from the newest bhavcopy we can read (Nov 18 2026: user got stuck holding HFCL overnight).
 const t2t = new Set();
@@ -120,9 +123,16 @@ for (let iso = prevDay(today), n = 0; n < 20; iso = prevDay(iso), n++) {
   const lines = csv.trim().split(/\r?\n/), head = lines[0].split(',').map((x) => x.trim()), c = (k) => head.indexOf(k);
   if (!gotLatest) { gotLatest = true; for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if (p[c('SERIES')] === 'BE') t2t.add(p[c('SYMBOL')]); } }
   if (n === 0) for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if ((p[c('SERIES')] === 'EQ' || p[c('SERIES')] === 'BE') && +p[c('PREV_CLOSE')] > 0) yRet.set(p[c('SYMBOL')], +p[c('CLOSE_PRICE')] / +p[c('PREV_CLOSE')] - 1); }
-  for (const line of lines.slice(1)) { const p = line.split(',').map((x) => x.trim()); if (p[c('SERIES')] === 'EQ' || p[c('SERIES')] === 'BE') (turnover.get(p[c('SYMBOL')]) ?? turnover.set(p[c('SYMBOL')], []).get(p[c('SYMBOL')])).push(+p[c('TURNOVER_LACS')] / 100); }
+  for (const line of lines.slice(1)) {
+    const p = line.split(',').map((x) => x.trim()); if (p[c('SERIES')] !== 'EQ' && p[c('SERIES')] !== 'BE') continue;
+    const s = p[c('SYMBOL')]; (turnover.get(s) ?? turnover.set(s, []).get(s)).push(+p[c('TURNOVER_LACS')] / 100);
+    const h = +p[c('HIGH_PRICE')], l = +p[c('LOW_PRICE')], pc = +p[c('PREV_CLOSE')], cl = +p[c('CLOSE_PRICE')];
+    if (h > 0 && l > 0 && pc > 0) (trueRange.get(s) ?? trueRange.set(s, []).get(s)).push({ tr: Math.max(h, pc) - Math.min(l, pc), close: cl });
+  }
 }
 const cr = new Map([...turnover].map(([s, a]) => [s, median(a)]));
+// average true range of the last 14 sessions as a share of the latest close (null if not enough days)
+const atrOf = (s) => { const a = trueRange.get(s); if (!a || a.length < 10) return null; const x = a.slice(0, 14); return x.reduce((t, y) => t + y.tr, 0) / x.length / a[0].close; };
 const nseDay = (() => { const [y, m, d] = today.split('-'); return `${d}-${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+m - 1]}-${y}`; })();
 while (!DRY && secs() < SEND_AT - 8) await sleep(2000);
 // read the newest lists and overnight filings right before deciding (a few seconds)
@@ -164,7 +174,7 @@ function choose(pre) {
     if (c.status !== 'watch' && c.status !== 'go') continue;
     const g = gapOf(c.symbol);
     if (g == null || g < RULE.gapGo[0] || g >= RULE.gapGo[1] || (cr.get(c.symbol) ?? 0) < 5) continue;
-    add(c.symbol, 'Gap & Go', 85 + Math.min(5, Math.min(c.qoq, c.yoy) * 5), `result: profit ${pct(c.qoq)} vs last quarter, ${pct(c.yoy)} vs last year; opening ${pct(g)}`, { exit: 'fixed', stop: 0.03, target: 0.07 });
+    add(c.symbol, 'Gap & Go', 85 + Math.min(5, Math.min(c.qoq, c.yoy) * 5), `result: profit ${pct(c.qoq)} vs last quarter, ${pct(c.yoy)} vs last year; opening ${pct(g)}`, (() => { const a = atrOf(c.symbol); return a ? { exit: 'fixed', stop: Math.min(0.08, Math.max(0.02, 1.25 * a)), target: Math.min(0.15, Math.max(0.04, 2 * a)), atr: a } : { exit: 'fixed', stop: 0.05, target: 0.07 }; })());
   }
   // 4. bounce-back (research/22: fell 3%+ yesterday, opens -3..-5% again, no bad news, Rs 5 cr+/day; +0.94% a day on days with
   //    no other pick, positive in every half-year since 2025). Only with a PRE-OPEN fill: 1% worse entry = no edge.
@@ -220,7 +230,7 @@ const picks = pickFrom(ranked).filter((c) => checks.get(c.symbol)?.verdict !== '
 log(`market ${pct(marketGap)}, candidates: ${ranked.map((c) => `${c.symbol}(${c.kind} ${c.score.toFixed(0)})`).join(', ') || 'none'}; Claude avoided: ${avoided.map(([s, v]) => `${s} (${v.reason})`).join(', ') || 'none'}`);
 
 const sellText = (p) => p.exit === 'trail' ? `when it falls 1.5% from its best (you get SELL NOW), or at ₹${p.stopPrice}` : `${p.targetPrice ? `UP at ₹${p.targetPrice} or ` : ''}DOWN at ₹${p.stopPrice}, else at 3:20 pm`;
-best = { ...best, date: today, cancelled: [], picks: picks.map(({ symbol, kind, why, gap, iep, limit, exit, stop, target, score }) => ({ symbol, kind, why, gap, iep, limit, exit, stop, target, level: tierOf(score), check: checks.get(symbol)?.reason, stopPrice: round(iep * (1 - stop)), targetPrice: target ? round(iep * (1 + target)) : null })).map((p) => ({ ...p, sell: sellText(p) })), avoided: avoided.map(([s, v]) => ({ symbol: s, reason: v.reason })), marketGap, sent: true, scored: false, generated: new Date().toISOString() };
+best = { ...best, date: today, cancelled: [], picks: picks.map(({ symbol, kind, why, gap, iep, limit, exit, stop, target, score, atr }) => ({ symbol, kind, why, gap, iep, limit, exit, stop, target, atr, level: tierOf(score), check: checks.get(symbol)?.reason, stopPrice: round(iep * (1 - stop)), targetPrice: target ? round(iep * (1 + target)) : null })).map((p) => ({ ...p, sell: sellText(p) })), avoided: avoided.map(([s, v]) => ({ symbol: s, reason: v.reason })), marketGap, sent: true, scored: false, generated: new Date().toISOString() };
 const publish = async () => { if (!DRY) { await publishNews('best', best); await publishNews('final', { date: today, sent: true, picks: best.picks }); } };
 await publish();
 const out = best.picks;
@@ -228,8 +238,8 @@ const avoidNote = avoided.length ? `\n\nClaude removed: ${avoided.map(([s, v]) =
 if (out.length) {
   await notify(`BUY TODAY: ${out.map((p) => p.symbol).join(', ')} (before 9:07)`,
     out.map((p, i) => `${i + 1}. ${p.symbol} - ${p.kind}\n   ${p.why}\n   Claude check: ${p.check}\n   BUY: limit ₹${p.limit} in pre-open NOW${p.level === 1 ? ' (HALF your usual money; only in pre-open, never after 9:15)' : ''}${bands.get(p.symbol) != null && bands.get(p.symbol) <= 0.05 ? `
-   ⚠ ${Math.round(bands.get(p.symbol) * 100)}% circuit stock: it can lock at the lower circuit (₹${round(p.iep / (1 + p.gap) * (1 - bands.get(p.symbol)))}) and then you cannot sell that day` : ''}\n   SELL ${p.sell}`).join('\n\n') +
-    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. Limit is up to 3% above the pre-open price (never above the upper circuit), so you rarely miss. Paid more than the pre-open price? Set your stop 3% below YOUR buy price. Not bought by 9:15? Cancel the order - never buy later. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
+   ⚠ ${Math.round(bands.get(p.symbol) * 100)}% circuit stock: it can lock at the lower circuit (₹${round(p.iep / (1 + p.gap) * (1 - bands.get(p.symbol)))}) and then you cannot sell that day` : ''}\n   SELL ${p.sell}${p.atr ? `\n   (levels fit this stock: it usually moves ~${(p.atr * 100).toFixed(1)}% a day, so stop -${(p.stop * 100).toFixed(1)}%, target +${(p.target * 100).toFixed(1)}%)` : ''}`).join('\n\n') +
+    `\n\n${out.length > 1 ? `Split your money equally (${out.length} stocks). ` : ''}Intraday only. Limit is up to 3% above the pre-open price (never above the upper circuit), so you rarely miss. Paid more than the pre-open price? Keep the same stop distance (in %) below YOUR buy price. Not bought by 9:15? Cancel the order - never buy later. If a CANCEL message comes before 9:07, cancel that order.${avoidNote}`, 'urgent', 'rocket');
 } else if (TEST && ranked.length + [...pre.keys()].length) {
   const sample = [...pre.entries()].filter(([s]) => (cr.get(s) ?? 0) >= 20).map(([s, q]) => ({ symbol: s, kind: 'test', why: `opened ${pct(q.iep / q.prevClose - 1)} today`, g: q.iep / q.prevClose - 1 })).sort((a, b) => b.g - a.g)[0];
   const v = sample ? await claudeCheck(sample) : null;
