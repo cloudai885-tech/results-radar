@@ -150,7 +150,8 @@ const LEVELS = {
   dip: (i, s, g) => g <= -0.02 && g > -0.0495,
 };
 const NOT_STOCK = /ETF|BEES|IETF|ADD$|^LIQUID|^GILT|^MON100|^MAFANG|^HNGSNG|^NIFTY|^SENSEX|^GOLD|^SILVER|CASE$|^MOM|^MID150|^AXIS.*ETF|^ICICI.*ETF/;
-const pick = (x, f, minCr) => [...x.m].filter(([s, r]) => !(process.env.ETF ? false : NOT_STOCK.test(s)) && r[1] > 0 && !x.results.has(s) && !beOn[x.i].has(s) && liq(x.i, s) >= minCr && f(x.i, s, r[2] / r[1] - 1)).sort((a, b) => liq(x.i, b[0]) - liq(x.i, a[0])).slice(0, 3);
+const { etfList: _etfList } = await import('../src/sources.mjs'); const ETFS = await _etfList();
+const pick = (x, f, minCr) => [...x.m].filter(([s, r]) => !(process.env.ETF ? false : (NOT_STOCK.test(s) || ETFS.has(s))) && r[1] > 0 && !x.results.has(s) && !beOn[x.i].has(s) && liq(x.i, s) >= minCr && f(x.i, s, r[2] / r[1] - 1)).sort((a, b) => liq(x.i, b[0]) - liq(x.i, a[0])).slice(0, 3);
 const PER = [['25H1', (d) => d < '2025-07'], ['25H2', (d) => d >= '2025-07' && d < '2026'], ['26H1', (d) => d >= '2026' && d < '2026-07'], ['26H2', (d) => d >= '2026-07']];
 const RECENT = '2026-05-17';
 const out = [];
@@ -214,6 +215,28 @@ if (process.env.GRID) {
   for (const r of res.filter((r) => /^(any \(no fall\)|yday <= -2%) \+ gap -2\.\.-3% \| t7s3 \| Rs 1cr\+/.test(r.k))) console.log(`  DETAIL ${r.k}: 25H1 ${pct(r.halves[0])}, 25H2 ${pct(r.halves[1])}, 26H1 ${pct(r.halves[2])}, 26H2 ${pct(r.halves[3])}`);
   console.log(`\nPassed ALL checks (TRAIN > +0.2%, TEST > +0.2%, still positive 0.25% worse, no negative half-year): ${good.length}`);
   for (const r of good.sort((a, b) => b.nte - a.nte)) console.log(`  ${r.k.padEnd(58)} TRAIN ${r.ntr}d ${pct(r.tr)} | TEST ${r.nte}d ${pct(r.te)} (0.25% worse ${pct(r.te25)}) | last 6m ${pct(r.rc)}`);
+  process.exit(0);
+}
+// SMALLDIP=1: full result of the "Small dip" candidate (any company Rs 1 cr+ opening -2..-3%, top 3, +7%/-3%) on empty days
+if (process.env.SMALLDIP) {
+  const { etfList } = await import('../src/sources.mjs'); const E = await etfList();
+  const etf0 = /ETF|BEES$|IETF$|^LIQUID|^GILT|^MON100|^MAFANG|^HNGSNG|^NIFTY|^SENSEX|^(GOLD|SILVER)(CASE|SHARE|1|ADD|IETF)$|MOMENTUM|^MID150|^MOM(30|50|100)/;
+  const empty = days.filter((x) => !x.n && !pick(x, LEVELS.bounce, 1).length);
+  const per = [];
+  for (const x of empty) {
+    const c = [...x.m].filter(([s, r]) => !E.has(s) && !etf0.test(s) && r[1] > 0 && !x.results.has(s) && !beOn[x.i].has(s) && liq(x.i, s) >= 1 && r[2] / r[1] - 1 > -0.03 && r[2] / r[1] - 1 <= -0.02).sort((a, b) => liq(x.i, b[0]) - liq(x.i, a[0])).slice(0, 3);
+    if (!c.length) continue;
+    const t = c.map(([s, r]) => { const [, , o, h, l, cl] = r; return { s, v: (l <= o * 0.97 ? -0.03 : h >= o * 1.07 ? 0.07 : cl / o - 1) - COST }; });
+    per.push({ d: x.d, t, v: mean(t.map((z) => z.v)) });
+  }
+  for (const [lab, f] of [['ALL (Jan 2025 - Nov 2026)', () => true], ['2025', (d) => d < '2026'], ['2026', (d) => d >= '2026'], ['last 6 months', (d) => d >= '2026-05-17']]) {
+    const p = per.filter((x) => f(x.d)), trades = p.flatMap((x) => x.t);
+    let eq = 1, pk = 1, dd = 0, streak = 0, worstStreak = 0;
+    for (const x of p) { eq *= 1 + x.v; pk = Math.max(pk, eq); dd = Math.min(dd, eq / pk - 1); streak = x.v < 0 ? streak + 1 : 0; worstStreak = Math.max(worstStreak, streak); }
+    console.log(`${lab.padEnd(26)} ${String(p.length).padStart(3)} days, ${String(trades.length).padStart(3)} trades | trades won ${pct(trades.filter((z) => z.v > 0).length / trades.length, 0)}, green days ${pct(p.filter((x) => x.v > 0).length / p.length, 0)} | avg/day ${pct(mean(p.map((x) => x.v)))} | best day ${pct(Math.max(...p.map((x) => x.v)))}, worst day ${pct(Math.min(...p.map((x) => x.v)))} | money growth ${pct(eq - 1)} | worst drop ${pct(dd)} | longest losing run ${worstStreak} days`);
+  }
+  console.log('\nLast 12 days it would have traded:');
+  for (const x of per.slice(-12)) console.log(`  ${x.d}  ${x.t.map((z) => `${z.s} ${pct(z.v)}`).join(', ')} | day ${pct(x.v)}`);
   process.exit(0);
 }
 // picks of the last ~55 days at the lowest limits, for the 5-minute fill check
