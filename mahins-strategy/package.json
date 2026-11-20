@@ -1,0 +1,9 @@
+{
+  "name": "mahins-strategy",
+  "private": true,
+  "type": "module",
+  "description": "Stand-alone backtest lab (separate from the Results Radar app)",
+  "dependencies": {
+    "dukascopy-node": "^1.51.1"
+  }
+}
