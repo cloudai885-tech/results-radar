@@ -159,3 +159,15 @@ details[open] > summary .chev { transform: rotate(180deg); }
 .answer-notes li.neg { color: var(--text); }
 .fold { margin-top: 14px; }
 .fold > summary { justify-content: space-between; border-style: solid; background: var(--surface); color: var(--text); font-size: 14px; padding: 12px 14px; }
+
+/* step-by-step trading guide (short + buy) */
+.guide { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.guide > summary { list-style: none; cursor: pointer; padding: 10px 12px; font-weight: 700; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.guide > summary::-webkit-details-marker { display: none; }
+.guide[open] > summary .chev { transform: rotate(180deg); }
+.guide-body { padding: 0 12px 12px; font-size: 14px; }
+.guide-body h4 { margin: 14px 0 6px; font-size: 14px; }
+.guide-body ol { margin: 0; padding-left: 22px; display: grid; gap: 8px; }
+.guide-body li span { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.guide-warn { border-left: 3px solid var(--bad, #d9534f); padding: 8px 10px; margin: 10px 0; background: color-mix(in srgb, var(--bad, #d9534f) 8%, transparent); border-radius: 6px; font-size: 13px; }
+.guide-ex { border-left: 3px solid var(--line); padding: 8px 10px; margin: 10px 0; font-size: 13px; }

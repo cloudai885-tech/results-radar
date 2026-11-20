@@ -273,8 +273,67 @@ function renderNews() {
   el.innerHTML = answerBox(n, today, l) +
     (bad ? `<details class="more fold"><summary>⛔ Bad news (${(l?.badNews ?? []).length + (p?.bad ?? []).filter((s) => !liveBad.has(s)).length}) · sell if you hold one ${CHEVRON}</summary>${box(bad)}</details>` : '') +
     section('📊', 'Scorecard', 'Every TODAY’S BUY and BUY NOW trade so far, after charges.', score, 'No finished trades yet.') +
+    `<details class="more fold"><summary>📘 How to trade on Groww — full guide (buy &amp; short) ${CHEVRON}</summary>${buyGuide()}${shortGuide(null, false)}</details>` +
     watchOnly(n, today, { live, open, at930, gapRows, panic, good, p, g, pr }) +
     (when ? `<p class="note" style="text-align:center">Live data updated ${esc(when)}${p?.mode === 'keyword' ? ' · rough keyword reading (no Claude key)' : ''}</p>` : '');
+}
+
+// ---- Step-by-step guides (Groww). x = today's pick for real numbers, or null for an example ----
+const r2 = (v) => Math.round(v * 20) / 20;
+const rs = (v) => `₹${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+function shortGuide(x, open) {
+  const sym = x?.symbol ?? 'XYZ', lim = x?.limit ?? 101.5;
+  // same numbers as the card: pre-open price until ~9:13, then the real opening price (the record updates itself)
+  const px = x?.open && x.filled ? x.open : x?.iep ?? lim, stop = x?.stopPrice ?? r2(px * 1.02), tgt = x?.targetPrice ?? r2(px * 0.95);
+  const qty = Math.max(1, Math.floor(12000 / px));
+  return `<details class="guide"${open ? ' open' : ''}><summary>📘 How to SHORT ${esc(sym)} on Groww — step by step ${CHEVRON}</summary><div class="guide-body">
+    <p><b>Short = SELL first, BUY back later the same day.</b> You earn when the price goes <b>down</b>. You do not need to own the shares.</p>
+    <h4>Before 9:05 am</h4>
+    <ol><li>Keep money in your Groww account (about the amount you want to trade). <span>Groww blocks margin for an intraday short.</span></li></ol>
+    <h4>A. Place the SELL order (9:05:30 – 9:08 am)</h4>
+    <ol>
+      <li>Open Groww → search <b>${esc(sym)}</b> → tap <b>SELL</b>. <span>Yes, SELL — even though you do not own it.</span></li>
+      <li>Choose <b>Intraday</b>. <span>NOT Delivery. Delivery sell needs shares you own.</span></li>
+      <li>Order type <b>Limit</b> → price <b>${rs(lim)}</b>.</li>
+      <li>Quantity = your money ÷ price. <span>Example: ₹12,000 ÷ ${rs(lim)} = ${Math.max(1, Math.floor(12000 / lim))} shares.</span></li>
+      <li>Tap <b>Sell</b> and confirm <b>before 9:08</b>. <span>It shows as pending (open) until 9:15. That is normal.</span></li>
+    </ol>
+    <h4>B. About 9:13 — the LEVELS message</h4>
+    <ol>
+      <li><b>Not filled</b> (opened below ${rs(lim)})? → <b>Cancel the order at 9:15.</b> Done for today. Never short after 9:15.</li>
+      <li><b>Filled?</b> Go straight to C. Your position shows as <b>−${qty}</b> (minus = short).</li>
+    </ol>
+    <h4>C. Put the STOP-LOSS in at once (most important step)</h4>
+    <ol>
+      <li>Positions → <b>${esc(sym)}</b> → tap <b>BUY</b> → <b>Intraday</b>.</li>
+      <li>Order type <b>SL-M</b> (stop-loss market) → trigger price <b>${rs(stop)}</b> → same quantity → place. <span>It waits. If the price rises to ${rs(stop)}, it buys back at once and the loss stops at about 2%.</span></li>
+    </ol>
+    <div class="guide-warn">⚠ Never skip the stop. On a short the loss grows if the price keeps going UP, and if it locks at the upper circuit nobody sells, so you cannot buy back.</div>
+    <h4>D. Taking the profit</h4>
+    <ol>
+      <li>Watch the price. When it falls to <b>${rs(tgt)}</b> (5% below): tap <b>Exit</b> on the position (or BUY the same quantity, Intraday, Market).</li>
+      <li>Then <b>cancel the SL-M stop order</b> straight away. <span>If you leave it, it can buy again later and open a NEW position.</span></li>
+    </ol>
+    <h4>E. Neither happened?</h4>
+    <ol>
+      <li>By <b>3:15 pm</b>: tap <b>Exit</b> (buys back at market), then cancel the stop order. <span>Groww squares off open intraday positions by itself around 3:20 pm and charges a fee — better to do it yourself.</span></li>
+      <li>Check Positions: ${esc(sym)} must show <b>0</b>. A short must never stay overnight.</li>
+    </ol>
+    <div class="guide-ex"><b>Example with ${qty} shares:</b> sold at ${rs(px)}.<br>Bought back at the target ${rs(tgt)} → profit ≈ <b class="pos">${rs((px - tgt) * qty)}</b> before charges.<br>Stop hit at ${rs(stop)} → loss ≈ <b class="neg">${rs((stop - px) * qty)}</b> before charges.</div>
+    <div class="guide-warn"><b>Never:</b> choose Delivery · short without the stop · short after 9:15 (the fall happens in the first minutes) · add more when it goes against you · keep a stop order open after you exited.</div>
+  </div></details>`;
+}
+function buyGuide() {
+  return `<details class="guide"><summary>📘 How to BUY (intraday) on Groww — step by step ${CHEVRON}</summary><div class="guide-body">
+    <h4>A. Place the BUY order (9:05:30 – 9:08 am)</h4>
+    <ol><li>Search the stock → <b>BUY</b> → <b>Intraday</b>.</li><li>Order type <b>Limit</b> → the limit price from the message → quantity = money ÷ price.</li><li>Tap Buy before <b>9:08</b>. <span>Pending until 9:15 is normal.</span></li></ol>
+    <h4>B. About 9:13 — the LEVELS message</h4>
+    <ol><li>Not filled → cancel at 9:15. Never buy later.</li><li>Filled → go to C.</li></ol>
+    <h4>C. STOP-LOSS at once</h4>
+    <ol><li>Positions → the stock → <b>SELL</b> → <b>Intraday</b> → order type <b>SL-M</b> → trigger = the stop price from the LEVELS message → same quantity.</li></ol>
+    <h4>D. Profit / end of day</h4>
+    <ol><li>Price reaches the target → <b>Exit</b>, then <b>cancel the stop order</b>.</li><li>Neither by 3:15 pm → <b>Exit</b>, then cancel the stop order. Positions must show 0.</li></ol>
+  </div></details>`;
 }
 
 // ---- The one box that answers "what do I do today?" ----
@@ -307,14 +366,14 @@ function answerBox(n, today, l) {
         ${x.targetPrice ? line('2. Sell UP at', `<span class="pos">₹${esc(x.targetPrice)}</span>`) : line('2. Sell when', '<span class="pos">it falls 1.5% from its best</span>')}
         ${line(x.targetPrice ? '3. Sell DOWN at' : '3. Or DOWN at', `<span class="neg">₹${esc(x.stopPrice)}</span>`)}
         ${line('4. Otherwise sell at', '3:20 pm')}
-        <p class="why">${esc(x.why)}</p></div>`).join('');
+        <p class="why">${esc(x.why)}</p>${buyGuide()}</div>`).join('');
     const shortHtml = shorts.map((x) => `<div class="pick"><div class="pick-head"><b>${esc(x.symbol)}</b><span>SHORT · sell first, buy back today</span></div>
         ${opened(x, 'short')}
         ${line('1. SELL first (Intraday, limit)', `₹${esc(x.limit)} <em>before 9:08 am</em>`)}
         ${line('2. Right after: stop-loss market BUY', `<span class="neg">₹${esc(x.stopPrice)}</span>`)}
         ${line('3. Buy back (target) at', `<span class="pos">₹${esc(x.targetPrice)}</span>`)}
-        ${line('4. Otherwise buy back at', '3:20 pm')}
-        <p class="why">${esc(x.why)}</p></div>`).join('');
+        ${line('4. Otherwise buy back at', '3:15 pm')}
+        <p class="why">${esc(x.why)}</p>${shortGuide(x, x.open == null && x.filled == null)}</div>`).join('');
     const title = [picks.length ? `BUY ${picks.map((x) => esc(x.symbol)).join(' + ')}` : '', shorts.length ? `SHORT ${shorts.map((x) => esc(x.symbol)).join(' + ')}` : ''].filter(Boolean).join(' · ');
     const n2 = picks.length + shorts.length;
     main = card('r-excellent', `Today · ${n2} trade${n2 > 1 ? 's' : ''}`, `✅ ${title}`, buyHtml + shortHtml +
