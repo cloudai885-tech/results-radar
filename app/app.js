@@ -256,9 +256,19 @@ function renderNews() {
     ...(n.live?.history ?? []).flatMap((h) => h.trades.filter((t) => t.ret != null).map((t) => ({ d: h.date, symbol: t.symbol, result: t.ret, kind: 'live news' }))),
     ...(l?.trades ?? []).filter((t) => t.ret != null).map((t) => ({ d: today, symbol: t.symbol, result: t.ret, kind: 'live news' }))].sort((x, y) => x.d.localeCompare(y.d));
   const won = all.filter((x) => x.result > 0).length, avg = all.length ? all.reduce((s, x) => s + x.result, 0) / all.length : 0;
+  // forward test: each strategy's live trades next to what the research expects (research/37-40, after charges)
+  const RESEARCH = { 'Bounce-back': [0.0167, 0.53], 'Short (failed bounce)': [0.0212, 0.67], 'Gap & Go': [0.0029, 0.54], 'Panic rebound': [0.016, null], 'Strong news': [0.012, 0.53] };
+  const fwd = Object.entries(RESEARCH).map(([k, [ra, rw]]) => {
+    const t = all.filter((x) => x.kind === k); if (!t.length) return '';
+    const a = t.reduce((s, x) => s + x.result, 0) / t.length, w = t.filter((x) => x.result > 0).length / t.length;
+    const verdict = t.length < 20 ? `${20 - t.length} more trades before judging` : a >= ra / 2 ? 'on track ✅' : a > 0 ? 'weaker than research ⚠' : 'losing — rethink ❌';
+    return `<div class="track-row"><span><b>${esc(k)}</b> · ${t.length} trades · ${Math.round(w * 100)}% won<br><span style="color:var(--muted)">research: ${pct(ra)} a trade${rw ? `, ${Math.round(rw * 100)}% won` : ''} · ${verdict}</span></span>${plain(a)}</div>`;
+  }).join('');
+  const missed = (n.best?.history ?? []).flatMap((h) => h.missed ?? []).length;
   const score = all.length ? `<div class="track" style="margin-top:0"><div class="stats"><div class="stat"><b>${all.length}</b><span>trades</span></div><div class="stat"><b>${Math.round((won / all.length) * 100)}%</b><span>won</span></div><div class="stat">${plain(avg)}<span>avg per trade</span></div></div>
+    ${fwd ? `<p class="note" style="margin:8px 2px 4px"><b>Forward test — live vs research</b>${missed ? ` · ${missed} pick${missed > 1 ? 's' : ''} not filled (opened outside the limit)` : ''}</p>${fwd}<p class="note" style="margin:8px 2px 4px"><b>Last trades</b></p>` : ''}
     ${all.slice(-12).reverse().map((x) => `<div class="track-row"><span>${esc(x.d.slice(5))} · <b>${esc(x.symbol)}</b> <span style="color:var(--muted)">${x.kind}</span></span>${plain(x.result)}</div>`).join('')}
-    <p class="note">After charges. Use real money only if this stays green for a few weeks.</p></div>` : '';
+    <p class="note">After charges. Judge each strategy after about 20 live trades: near its research number = real edge.</p></div>` : '';
   const when = n.updated ? new Date(n.updated).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' }) : null;
   el.innerHTML = answerBox(n, today, l) +
     (bad ? `<details class="more fold"><summary>⛔ Bad news (${(l?.badNews ?? []).length + (p?.bad ?? []).filter((s) => !liveBad.has(s)).length}) · sell if you hold one ${CHEVRON}</summary>${box(bad)}</details>` : '') +
@@ -272,7 +282,9 @@ const istMin = () => { const d = new Date(Date.now() + 19800e3); return d.getUTC
 function answerBox(n, today, l) {
   const now = istMin(), dow = new Date(Date.now() + 19800e3).getUTCDay();
   const b = n.best?.date === today ? n.best : null, f = n.final?.date === today ? n.final : null;
-  const picks = f?.picks ?? b?.picks ?? [];
+  // the newer of the two records wins (best gets the real opening prices at ~9:13)
+  const src = b?.levelsSent ? b : f ?? b;
+  const picks = src?.picks ?? [], shorts = src?.shorts ?? [];
   const cancelled = b?.cancelled ?? [], avoided = b?.avoided ?? [];
   const liveTrades = l?.trades ?? [];
   const closed = now >= 15 * 60 + 30;
@@ -283,16 +295,30 @@ function answerBox(n, today, l) {
   if (dow === 0 || dow === 6) main = card('r-none', 'Today', 'Market closed', '<p>Weekend. The next buy list comes at about 9:05:30 am on the next market day.</p>');
   else if (!b && now < 9 * 60 + 6) main = card('r-good', 'Today · waiting', '⏳ Wait for 9:05:30 am', '<p>The buy list comes at <b>about 9:05:30 am</b> on your phone and here. <b>Do not buy anything before it.</b></p>');
   else if (!b && !liveTrades.length) main = card('r-none', 'Today', 'No list today', '<p>The morning check did not run (holiday, or NSE did not answer). <b>No buy.</b></p>');
-  else if (picks.length) {
+  else if (picks.length || shorts.length) {
     const half = picks.some((x) => x.level === 1);
-    main = card('r-excellent', `Today's buy · ${picks.length} stock${picks.length > 1 ? 's' : ''}`, `✅ BUY ${picks.map((x) => esc(x.symbol)).join(' + ')}`,
-      picks.map((x) => `<div class="pick"><div class="pick-head"><b>${esc(x.symbol)}</b><span>${esc(x.kind)}${x.level === 1 ? ' · HALF money' : ''}</span></div>
+    // after ~9:13 the record has the real opening price: show what happened and the exact levels
+    const opened = (x, verb) => (x.open == null ? '' : x.filled
+      ? `<p class="why pos"><b>Opened ₹${esc(x.open)} — you are ${verb} at ₹${esc(x.open)}.</b> Levels below are exact.</p>`
+      : `<p class="why neg"><b>Opened ₹${esc(x.open)} — NOT filled.</b> Cancel the order, do not chase.</p>`);
+    const buyHtml = picks.map((x) => `<div class="pick"><div class="pick-head"><b>${esc(x.symbol)}</b><span>${esc(x.kind)}${x.level === 1 ? ' · HALF money' : ''}</span></div>
+        ${opened(x, 'bought')}
         ${line('1. Buy (limit order)', `₹${esc(x.limit)} <em>before 9:08 am</em>`)}
         ${x.targetPrice ? line('2. Sell UP at', `<span class="pos">₹${esc(x.targetPrice)}</span>`) : line('2. Sell when', '<span class="pos">it falls 1.5% from its best</span>')}
         ${line(x.targetPrice ? '3. Sell DOWN at' : '3. Or DOWN at', `<span class="neg">₹${esc(x.stopPrice)}</span>`)}
         ${line('4. Otherwise sell at', '3:20 pm')}
-        <p class="why">${esc(x.why)}</p></div>`).join('') +
-      `<p class="rule">${picks.length > 1 ? `Split your money equally. ` : ''}${half ? 'HALF money on the one marked. ' : ''}Opens above the limit? You are not bought — <b>do not chase</b>. Not bought by 9:15? Cancel the order.</p>`);
+        <p class="why">${esc(x.why)}</p></div>`).join('');
+    const shortHtml = shorts.map((x) => `<div class="pick"><div class="pick-head"><b>${esc(x.symbol)}</b><span>SHORT · sell first, buy back today</span></div>
+        ${opened(x, 'short')}
+        ${line('1. SELL first (Intraday, limit)', `₹${esc(x.limit)} <em>before 9:08 am</em>`)}
+        ${line('2. Right after: stop-loss market BUY', `<span class="neg">₹${esc(x.stopPrice)}</span>`)}
+        ${line('3. Buy back (target) at', `<span class="pos">₹${esc(x.targetPrice)}</span>`)}
+        ${line('4. Otherwise buy back at', '3:20 pm')}
+        <p class="why">${esc(x.why)}</p></div>`).join('');
+    const title = [picks.length ? `BUY ${picks.map((x) => esc(x.symbol)).join(' + ')}` : '', shorts.length ? `SHORT ${shorts.map((x) => esc(x.symbol)).join(' + ')}` : ''].filter(Boolean).join(' · ');
+    const n2 = picks.length + shorts.length;
+    main = card('r-excellent', `Today · ${n2} trade${n2 > 1 ? 's' : ''}`, `✅ ${title}`, buyHtml + shortHtml +
+      `<p class="rule">${n2 > 1 ? `Split your money equally. ` : ''}${half ? 'HALF money on the one marked. ' : ''}Not filled at the open? <b>Do not chase</b> — cancel the order at 9:15.${shorts.length ? ' A short MUST have its stop-loss order in place; never hold it overnight.' : ''} Exact levels from the real opening price come at about 9:13.</p>`);
   } else main = card('r-none', "Today's buy", '🚫 NO BUY TODAY', `<p><b>Keep your money.</b> Nothing was strong enough this morning${b?.marketGap != null ? ` (market opened ${esc(pct(b.marketGap))})` : ''}. On weak days not trading is the winning move.</p>`);
 
   const notes = [

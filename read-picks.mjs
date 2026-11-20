@@ -15,10 +15,10 @@ const pct = (v) => (v == null ? '?' : `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1
 
 const b = news.best ?? {};
 console.log(`TODAY'S BUY record for ${b.date ?? '?'} (made ${b.generated ?? '?'}), market opening ${pct(b.marketGap)}`);
-for (const p of b.picks ?? []) {
-  console.log(`  ${p.symbol} - ${p.kind} (level ${p.level})`);
+for (const p of [...(b.picks ?? []), ...(b.shorts ?? [])]) {
+  console.log(`  ${p.symbol} - ${p.side === 'short' ? 'SHORT ' : ''}${p.kind} (level ${p.level})`);
   console.log(`    why: ${p.why}`);
-  console.log(`    pre-open ₹${p.iep} (${pct(p.gap)}), buy limit ₹${p.limit}, sell ${p.sell}`);
+  console.log(`    pre-open ₹${p.iep} (${pct(p.gap)}), buy limit ₹${p.limit}, ${p.side === "short" ? `sell limit ₹${p.limit}, stop ₹${p.stopPrice}, target ₹${p.targetPrice}` : `sell ${p.sell}`}`);
   console.log(`    Claude check: ${p.check ?? '-'}${p.result != null ? ` | result ${pct(p.result)} (${p.how})` : ''}${p.filled === false ? ' | not filled' : ''}`);
 }
 if (!b.picks?.length) console.log('  (no picks left in the list)');
