@@ -36,7 +36,7 @@
 //                                -2% from yesterday's close, so a stock that bounces back more than that before the open is not bought;
 //                                Gap & Go / news: never above the top of the range or the circuit).
 // Also scores yesterday's picks first (5-minute candles) and keeps the record for the app (row 1, news.best).
-import { fetchCached, preOpen, announcements, holidays, etfList, priceBands, buyLimit } from './src/sources.mjs';
+import { fetchCached, preOpen, announcements, holidays, etfList, priceBands, buyLimit, toTick } from './src/sources.mjs';
 import { categorise } from './research/categories.mjs';
 import { publishNews } from './src/app-publish.mjs';
 import Anthropic from '@anthropic-ai/sdk';
@@ -51,7 +51,7 @@ const isoOf = (d) => d.toISOString().slice(0, 10);
 const secs = () => { const n = ist(); return n.getUTCHours() * 3600 + n.getUTCMinutes() * 60 + n.getUTCSeconds(); };
 const today = isoOf(ist());
 const pct = (v) => `${v >= 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
-const round = (v) => Math.round(v * 20) / 20;
+const round = (v) => toTick(v);
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)] ?? 0; };
 const log = (...a) => console.log(ist().toISOString().slice(11, 19), ...a);
 
@@ -180,12 +180,12 @@ async function freshPreOpen() {
   return null;
 }
 const bands = await priceBands(); // circuit limits, so the buy limit is never above the upper circuit
-// Room from the pre-open price to the circuit the trade would get stuck at (lower for buys, upper for shorts).
+// Room from the pre-open price to a circuit: 'down' = to the lower circuit, 'up' = to the upper circuit.
 // No band (F&O stocks) = no circuit = unlimited room.
-function roomToCircuit(symbol, p, side) {
+function roomToCircuit(symbol, p, dir) {
   const band = bands.get(symbol);
   if (band == null) return Infinity;
-  return side === 'buy' ? 1 - p.prevClose * (1 - band) / p.iep : p.prevClose * (1 + band) / p.iep - 1;
+  return dir === 'down' ? 1 - p.prevClose * (1 - band) / p.iep : p.prevClose * (1 + band) / p.iep - 1;
 }
 // ---- 3. candidates from every strategy, for one set of pre-open prices ----
 function choose(pre) {
@@ -194,18 +194,21 @@ function choose(pre) {
   const add = (symbol, kind, score, why, rule) => {
     const p = pre.get(symbol), gap = gapOf(symbol);
     if (!p?.iep || gap == null || t2t.has(symbol) || etfs.has(symbol)) return; // companies only: no ETFs (SILVERBEES etc.)
-    // no stocks under Rs 20 (prev close). Backtests used Rs 5; the user chose Rs 20 (Nov 23 2026) after the live picker sent EMPOWER at Rs 0.93,
-    // where 5-paise rounding made the buy limit and the stop the same price.
-    if (!(p.prevClose >= 20)) return;
+    // minimum Rs 1 (prev close) for buys - the trader is fine with cheap stocks; the danger is the lower circuit (room rule
+    // below). 2021-26 with the room rule: Bounce-back Rs 1-5 +1.29%/trade (31% won), Rs 5-20 +1.28%, Rs 20+ +1.31%.
+    if (!(p.prevClose >= 1)) return;
     // Panic / Bounce-back: at least 3% room from the pre-open price down to the lower circuit. Our 3% stop sits below the
     // lower circuit otherwise, and on bad days the stock locks there with no buyers (user's trader, Nov 23 2026: 5 of the
     // first 6 picks were 5%-band stocks). 2021-26 with locked days sold at the next open: room <3% +1.24% -> -0.07% a trade
     // (40% locked), room 3%+ unchanged (+1.2%). 5%-band Bounce-back: +1.16% -> -0.08%.
-    if ((kind === 'Panic rebound' || kind === 'Bounce-back') && roomToCircuit(symbol, p, 'buy') < 0.03) return;
+    if ((kind === 'Panic rebound' || kind === 'Bounce-back') && roomToCircuit(symbol, p, 'down') < 0.03) return;
+    // Gap & Go / news gaps buy a gap-UP: at or near the UPPER circuit there is no room for the 4-15% target and nobody
+    // to sell to at the top. 2024-26: 4 of 82 Gap & Go trades had <3% room (two lost ~8%).
+    if (kind !== 'Panic rebound' && kind !== 'Bounce-back' && roomToCircuit(symbol, p, 'up') < 0.03) return;
     // the limit keeps the order inside a tested range, so no CANCEL message is needed if the price moves before 9:10.
     // Panic / Bounce-back: limit at yesterday's close -2% (research/35: opened -3..-5% +0.90% a trade, opened -2..-3%
     // still +0.27% in 2025 and 2026, opened -1..-2% -0.34%), so a stock that bounces only a little is still bought.
-    const tick = (v) => Math.floor(v * 20 + 1e-6) / 20;
+    const tick = (v) => toTick(v, 'floor');
     const down = kind === 'Panic rebound' || kind === 'Bounce-back';
     const top = kind === 'Gap & Go' ? RULE.gapGo[1] : RULE.newsGap[1];
     const limit = down ? tick(p.prevClose * (1 - 0.02)) : Math.min(buyLimit(p.iep, p.prevClose, bands.get(symbol), RULE.limitAbove), tick(p.prevClose * (1 + top)));
@@ -243,11 +246,11 @@ function choose(pre) {
   const shorts = [];
   if (marketGap >= 0) for (const [s, p] of pre) {
     const h = hist.get(s), g = gapOf(s);
-    if (!h?.[0]?.lc || h[1]?.lc || g == null || g - marketGap <= 0.01 || (cr.get(s) ?? 0) < 1 || !eqY.has(s) || t2t.has(s) || etfs.has(s) || !(p.prevClose >= 20)) continue;
-    if (roomToCircuit(s, p, 'short') < 0.03) continue; // locked at the UPPER circuit = can't buy back (room <3%: +1.32% -> +0.17% a trade)
+    if (!h?.[0]?.lc || h[1]?.lc || g == null || g - marketGap <= 0.01 || (cr.get(s) ?? 0) < 1 || !eqY.has(s) || t2t.has(s) || etfs.has(s) || !(p.prevClose >= 5)) continue; // shorts Rs 5+: Rs 1-5 shorts lost (-0.24%/trade, 2021-26)
+    if (roomToCircuit(s, p, 'up') < 0.03) continue; // locked at the UPPER circuit = can't buy back (room <3%: +1.32% -> +0.17% a trade)
     const band = bands.get(s);
     const upper = band != null ? p.prevClose * (1 + band) : Infinity;
-    const limit = Math.min(Math.ceil(p.prevClose * (1 + Math.max(0, marketGap) + 0.01) * 20 - 1e-6) / 20, Math.floor(upper * 20 + 1e-6) / 20);
+    const limit = Math.min(toTick(p.prevClose * (1 + Math.max(0, marketGap) + 0.01), 'ceil'), toTick(upper, 'floor'));
     shorts.push({ symbol: s, kind: 'Short (failed bounce)', side: 'short', score: 80, cr: cr.get(s) ?? 0, gap: g, iep: p.iep, limit, exit: 'fixed', stop: 0.02, target: 0.05,
       why: `locked at the lower circuit yesterday (${pct(h[0].ret)}), now opening ${pct(g)} while the market is ${pct(marketGap)} - trapped sellers usually push it back down` });
   }

@@ -3,7 +3,7 @@
 // Buy in pre-open at the opening price, +7% target, -3% stop, otherwise sell at 3:20 pm. Max 3 picks, most traded first.
 // Starts about 8:50 am, waits for pre-open prices (~9:04), alerts the phone, and first scores the previous picks.
 import fs from 'node:fs';
-import { fetchCached, preOpen, preOpenSnapshot, announcements } from './src/sources.mjs';
+import { fetchCached, preOpen, preOpenSnapshot, announcements, priceBands, toTick } from './src/sources.mjs';
 import { categorise } from './research/categories.mjs';
 import { publishNews } from './src/app-publish.mjs';
 
@@ -123,12 +123,18 @@ const marketGap = median(gaps);
 const panicMorning = gaps.length > 200 && marketGap <= RULE.panicMarket;
 console.log(`Market opening ${pct(marketGap)} (${gaps.length} stocks). ${panicMorning ? 'PANIC MORNING' : 'normal morning'}`);
 
+const bands = await priceBands().catch(() => new Map());
 const candidates = [];
 for (const [symbol, y] of yday.data) {
   const p = pre.get(symbol);
   if (!p?.iep || !y.prev || y.t2t) continue; // T2T (series BE): no same-day sell, so never an intraday pick (HFCL, Nov 18 2026)
   const yRet = y.close / y.prev - 1, gap = p.iep / y.close - 1, liq = liqOf.get(symbol);
   if (gap > RULE.gapMax || gap <= RULE.gapMin + 0.0005) continue; // -5% is often the lower circuit: tested negative
+  // same limits as TODAY'S BUY (Nov 23 2026): Rs 1+, and 3%+ room down to the lower circuit (else the 3% stop sits
+  // below the circuit and the stock can lock with no buyers)
+  if (y.close < 1) continue;
+  const band = bands.get(symbol);
+  if (band != null && 1 - y.close * (1 - band) / p.iep < 0.03) continue;
   // HIGH: panic morning + big, heavily traded stock (tested on clean data: 10 of 10 days won, Jan 2025 - Nov 2026). NORMAL: fell 3%+ yesterday too (watch only).
   const tier = panicMorning && liq >= RULE.highMinCr ? 'high' : yRet <= RULE.yFall && liq >= RULE.minCr && p.iep <= RULE.capitalRs / RULE.maxPicks ? 'normal' : null;
   if (tier) candidates.push({ symbol, tier, yRet, gap, iep: p.iep, liq });
@@ -142,7 +148,7 @@ if (!SIM) try {
     (news.get(a.symbol) ?? news.set(a.symbol, []).get(a.symbol)).push(cat);
   }
 } catch { newsChecked = false; }
-const round = (v) => Math.round(v * 20) / 20;
+const round = (v) => toTick(v);
 const choose = (tier) => candidates
   .filter((c) => c.tier === tier && !(news.get(c.symbol) ?? []).some((cat) => BAD_NEWS.has(cat)))
   .sort((a, b) => b.liq - a.liq)

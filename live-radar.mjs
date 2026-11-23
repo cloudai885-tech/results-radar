@@ -11,7 +11,7 @@ import fs from 'node:fs';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
-import { fetchCached, announcements, holidays, mapPool } from './src/sources.mjs';
+import { fetchCached, announcements, holidays, mapPool, priceBands } from './src/sources.mjs';
 import { typeOf } from './research/news-types.mjs';
 import { publishNews } from './src/app-publish.mjs';
 
@@ -202,6 +202,11 @@ while (hhmmNow() < endAt) {
     const runUp = b.last / atNews - 1, dayUp = b.last / b.prevClose - 1;
     if (runUp >= RULE.maxRunUp || dayUp >= RULE.maxDayUp) { log(`  skip ${w.x.symbol}: already ran (${pct(runUp)} since news, ${pct(dayUp)} on the day)`); return; }
     if (runUp < -0.005) { log(`  skip ${w.x.symbol}: falling after the news (${pct(runUp)}) - sellers in charge`); return; }
+    // same limits as TODAY'S BUY (Nov 23 2026): no stocks under Rs 1, and 3%+ room up to the upper circuit
+    // (a 10%-band stock already +9% can rise only 1% more, and at the circuit there is nobody to sell to)
+    if (b.prevClose < 1) { log(`  skip ${w.x.symbol}: price under Rs 1`); return; }
+    const band = (await priceBands().catch(() => new Map())).get(w.x.symbol);
+    if (band != null && b.prevClose * (1 + band) / b.last - 1 < 0.03) { log(`  skip ${w.x.symbol}: too close to the upper circuit (${Math.round(band * 100)}% band)`); return; }
     const delay = Math.round((Date.now() - w.st.ms) / 1000);
     if (delay > RULE.maxDelaySec) { log(`  skip ${w.x.symbol}: news is ${delay}s old - too late`); return; }
     const t = { symbol: w.x.symbol, px: b.last, peak: b.last, at: ist().toISOString().slice(11, 16), newsAt: w.st.t, delay, why: g.why, strength: g.strength };

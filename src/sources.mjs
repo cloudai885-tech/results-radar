@@ -304,10 +304,19 @@ export async function priceBands(ttlHours = 12) {
   return bands;
 }
 
+// NSE price step: 1 paisa below Rs 250, 5 paise above (seen in the bhavcopy: most prices under Rs 250 are not multiples
+// of 0.05). Rounding everything to 5 paise broke cheap stocks: EMPOWER at Rs 0.93 got buy limit = stop (Nov 23 2026).
+export function toTick(v, mode = 'round') {
+  const k = v < 250 ? 100 : 20;
+  if (mode === 'floor') return Math.floor(v * k + 1e-6) / k;
+  if (mode === 'ceil') return Math.ceil(v * k - 1e-6) / k;
+  return Math.round(v * k) / k;
+}
+
 // Buy limit: `above` over the pre-open price, but never above the upper circuit (else the order is rejected).
-// Rounded down to the 5-paise tick so it can never land just over the circuit.
+// Rounded down to the tick so it can never land just over the circuit.
 export function buyLimit(iep, prevClose, band, above) {
   let upper = prevClose * (1 + (band ?? 0.1));
   if (band == null) while (upper < iep) upper += prevClose * 0.05; // F&O range already widened
-  return Math.floor(Math.max(iep, Math.min(iep * (1 + above), upper)) * 20 + 1e-6) / 20;
+  return toTick(Math.max(iep, Math.min(iep * (1 + above), upper)), 'floor');
 }
