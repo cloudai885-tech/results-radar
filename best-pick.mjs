@@ -187,6 +187,9 @@ function choose(pre) {
   const add = (symbol, kind, score, why, rule) => {
     const p = pre.get(symbol), gap = gapOf(symbol);
     if (!p?.iep || gap == null || t2t.has(symbol) || etfs.has(symbol)) return; // companies only: no ETFs (SILVERBEES etc.)
+    // no stocks under Rs 20 (prev close). Backtests used Rs 5; the user chose Rs 20 (Nov 23 2026) after the live picker sent EMPOWER at Rs 0.93,
+    // where 5-paise rounding made the buy limit and the stop the same price.
+    if (!(p.prevClose >= 20)) return;
     // the limit keeps the order inside a tested range, so no CANCEL message is needed if the price moves before 9:10.
     // Panic / Bounce-back: limit at yesterday's close -2% (research/35: opened -3..-5% +0.90% a trade, opened -2..-3%
     // still +0.27% in 2025 and 2026, opened -1..-2% -0.34%), so a stock that bounces only a little is still bought.
