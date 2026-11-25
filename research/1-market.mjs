@@ -39,5 +39,5 @@ for (; d <= end; d = new Date(+d + 864e5)) {
     (stocks[p[c('SYMBOL')]] ??= []).push(row);
   }
 }
-fs.writeFileSync(new URL('market.json', OUT_DIR), JSON.stringify({ days, stocks }));
+fs.writeFileSync(new URL(process.env.OUT ?? 'market.json', OUT_DIR), JSON.stringify({ days, stocks }));
 console.log(`Saved ${days.length} trading days, ${Object.keys(stocks).length} stocks (${days[0]} to ${days.at(-1)}).`);

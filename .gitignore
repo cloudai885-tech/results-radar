@@ -10,3 +10,4 @@ data/research/
 data/study-events.json
 data/news-picks.json
 data/live-radar.json
+.upstox-token.json
